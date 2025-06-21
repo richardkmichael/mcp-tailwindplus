@@ -1,0 +1,14 @@
+[project]
+name = "mcp-tailwindui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.8.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.0",
+]
