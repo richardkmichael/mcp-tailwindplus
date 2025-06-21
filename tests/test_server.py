@@ -1,0 +1,289 @@
+import json
+from io import StringIO
+
+import pytest
+from fastmcp import Client
+
+from mcp_tailwindui.server import create_server
+from mcp_tailwindui.tailwind_plus import TailwindPlus
+
+
+@pytest.fixture
+def sample_mcp_data():
+    """Sample TailwindUI data for MCP testing."""
+    return {
+        "application_ui": {
+            "forms": {
+                "input_groups": {"with_icon": '<input class="form-input" type="text">'},
+                "select_menus": {"basic": '<select class="form-select"></select>'},
+            },
+            "navigation": {
+                "breadcrumbs": {"simple": '<nav aria-label="Breadcrumb"></nav>'}
+            },
+        },
+        "marketing": {
+            "hero_sections": {"centered": '<section class="hero"></section>'}
+        },
+    }
+
+
+@pytest.fixture
+def mcp_server(sample_mcp_data):
+    """Create server with test data using factory function."""
+    test_data_io = StringIO(json.dumps(sample_mcp_data))
+    test_tailwind_plus = TailwindPlus(test_data_io)
+
+    return create_server(test_tailwind_plus)
+
+
+class TestMCPServerFunctionality:
+    """Test FastMCP server functionality using proper FastMCP testing patterns."""
+
+    @pytest.mark.asyncio
+    async def test_list_all_component_names(self, mcp_server):
+        """Test the list_component_names tool."""
+        async with Client(mcp_server) as client:
+            result = await client.call_tool("list_component_names", {})
+
+            assert len(result) == 1
+            assert result[0].text is not None
+
+            # The result comes back as JSON string from FastMCP Client
+            component_names = json.loads(result[0].text)
+            assert isinstance(component_names, list)
+            assert len(component_names) == 4
+
+            expected_names = [
+                "application_ui.forms.input_groups.with_icon",
+                "application_ui.forms.select_menus.basic",
+                "application_ui.navigation.breadcrumbs.simple",
+                "marketing.hero_sections.centered",
+            ]
+            assert sorted(component_names) == sorted(expected_names)
+
+    @pytest.mark.asyncio
+    async def test_get_component_by_name_exists(self, mcp_server):
+        """Test getting an existing component."""
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "get_component_by_name",
+                {"name": "application_ui.forms.input_groups.with_icon"},
+            )
+
+            assert len(result) == 1
+            assert result[0].text is not None
+
+            # Parse the JSON result
+            component_data = json.loads(result[0].text)
+            assert isinstance(component_data, dict)
+            assert "application_ui.forms.input_groups.with_icon" in component_data
+
+            component = component_data["application_ui.forms.input_groups.with_icon"]
+            assert isinstance(component, str)
+            assert "form-input" in component
+
+    @pytest.mark.asyncio
+    async def test_get_component_by_name_not_exists(self, mcp_server):
+        """Test getting a non-existent component."""
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "get_component_by_name", {"name": "nonexistent.component"}
+            )
+
+            assert len(result) == 1
+            assert result[0].text is not None
+
+            # Parse the JSON result
+            component_data = json.loads(result[0].text)
+            assert isinstance(component_data, dict)
+            assert "nonexistent.component" in component_data
+            assert component_data["nonexistent.component"] == {}
+
+    @pytest.mark.asyncio
+    async def test_search_components_by_name(self, mcp_server):
+        """Test searching for components."""
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "search_components_by_name", {"search_term": "forms"}
+            )
+
+            assert len(result) == 1
+            assert result[0].text is not None
+
+            # Parse the JSON result
+            search_results = json.loads(result[0].text)
+            assert isinstance(search_results, list)
+            assert len(search_results) == 2
+
+            expected_results = [
+                "application_ui.forms.input_groups.with_icon",
+                "application_ui.forms.select_menus.basic",
+            ]
+            assert sorted(search_results) == sorted(expected_results)
+
+    @pytest.mark.asyncio
+    async def test_search_components_case_insensitive(self, mcp_server):
+        """Test case insensitive search."""
+        async with Client(mcp_server) as client:
+            # Test lowercase
+            result_lower = await client.call_tool(
+                "search_components_by_name", {"search_term": "hero"}
+            )
+
+            # Test uppercase
+            result_upper = await client.call_tool(
+                "search_components_by_name", {"search_term": "HERO"}
+            )
+
+            assert len(result_lower) == 1
+            assert len(result_upper) == 1
+
+            # The results come back as JSON strings from FastMCP Client
+            # For single results, FastMCP might return the item directly instead of a list
+            lower_text = result_lower[0].text
+            upper_text = result_upper[0].text
+
+            # Try to parse as JSON, if it fails it might be a single string
+            try:
+                lower_results = json.loads(lower_text)
+            except json.JSONDecodeError:
+                # Single result returned as plain string, wrap in list
+                lower_results = [lower_text]
+
+            try:
+                upper_results = json.loads(upper_text)
+            except json.JSONDecodeError:
+                # Single result returned as plain string, wrap in list
+                upper_results = [upper_text]
+
+            assert lower_results == upper_results
+            assert isinstance(lower_results, list)
+            assert len(lower_results) == 1
+            assert "marketing.hero_sections.centered" in lower_results
+
+    @pytest.mark.asyncio
+    async def test_search_components_no_matches(self, mcp_server):
+        """Test search with no matches."""
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "search_components_by_name", {"search_term": "nonexistent"}
+            )
+
+            # Handle empty results - might return no content or empty list
+            if len(result) == 0:
+                search_results = []
+            else:
+                search_results = json.loads(result[0].text)
+
+            assert isinstance(search_results, list)
+            assert len(search_results) == 0
+
+
+class TestMCPServerMetadata:
+    """Test FastMCP server metadata and configuration."""
+
+    def test_server_name_and_instructions(self, mcp_server):
+        """Test server name and instructions."""
+        assert mcp_server.name == "tailwindui"
+        assert "component browser" in mcp_server.instructions.lower()
+
+    @pytest.mark.asyncio
+    async def test_server_tools_exist(self, mcp_server):
+        """Test that all expected tools are registered."""
+        tools = await mcp_server.get_tools()
+        tool_names = list(tools.keys())
+
+        expected_tools = [
+            "list_component_names",
+            "get_component_by_name",
+            "search_components_by_name",
+        ]
+
+        for tool_name in expected_tools:
+            assert tool_name in tool_names
+
+    @pytest.mark.asyncio
+    async def test_tool_metadata(self, mcp_server):
+        """Test tool metadata and annotations."""
+        tools = await mcp_server.get_tools()
+
+        # Test list tool
+        list_tool = tools["list_component_names"]
+        assert (
+            list_tool.description
+            == "Get a complete list of all available TailwindPlus component names."
+        )
+        assert "list" in list_tool.tags
+        assert "components" in list_tool.tags
+        assert list_tool.annotations.readOnlyHint is True
+        assert list_tool.annotations.idempotentHint is True
+
+        # Test get tool
+        get_tool = tools["get_component_by_name"]
+        assert (
+            get_tool.description
+            == "Retrieve a specific TailwindPlus component by its dotted path name."
+        )
+        assert "get" in get_tool.tags
+        assert "components" in get_tool.tags
+
+        # Test search tool
+        search_tool = tools["search_components_by_name"]
+        assert (
+            search_tool.description
+            == "Search for TailwindPlus components by name pattern or keyword."
+        )
+        assert "search" in search_tool.tags
+        assert "components" in search_tool.tags
+
+
+class TestMCPServerIntegration:
+    """Test end-to-end server functionality."""
+
+    @pytest.mark.asyncio
+    async def test_tool_integration(self, mcp_server):
+        """Test that tools work together correctly."""
+        async with Client(mcp_server) as client:
+            # First, get all component names
+            list_result = await client.call_tool("list_component_names", {})
+            assert len(list_result) == 1
+
+            all_names = json.loads(list_result[0].text)
+
+            # Then try to get each component
+            for name in all_names:
+                get_result = await client.call_tool(
+                    "get_component_by_name", {"name": name}
+                )
+                assert len(get_result) == 1
+
+                component_data = json.loads(get_result[0].text)
+                assert name in component_data
+                assert component_data[name] != {}
+
+    @pytest.mark.asyncio
+    async def test_search_returns_valid_components(self, mcp_server):
+        """Test that search results can be retrieved."""
+        async with Client(mcp_server) as client:
+            # Search for components
+            search_result = await client.call_tool(
+                "search_components_by_name", {"search_term": "application_ui"}
+            )
+            assert len(search_result) == 1
+
+            search_names = json.loads(search_result[0].text)
+
+            # Verify each search result can be retrieved
+            for name in search_names:
+                get_result = await client.call_tool(
+                    "get_component_by_name", {"name": name}
+                )
+                assert len(get_result) == 1
+
+                component_data = json.loads(get_result[0].text)
+                assert name in component_data
+
+                # Verify component has expected structure
+                component = component_data[name]
+                assert isinstance(component, str)
+                assert len(component) > 0

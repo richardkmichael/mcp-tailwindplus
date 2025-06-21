@@ -1,14 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "mcp-tailwindui"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastMCP server for browsing and searching TailwindUI components"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=2.8.1",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
 ]
+
+[project.scripts]
+mcp-tailwindui = "main:main"
 
 [dependency-groups]
 dev = [
     "ruff>=0.12.0",
 ]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "-ra",                    # show extra test summary info
+    "--strict-markers",       # treat unregistered markers as errors
+    "--strict-config",        # treat config issues as errors
+    "--disable-warnings",     # disable pytest warnings
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"              # automatically detect async tests
+asyncio_default_fixture_loop_scope = "function"  # fix deprecation warning
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "container: marks tests that require Docker containers",
+]
+
