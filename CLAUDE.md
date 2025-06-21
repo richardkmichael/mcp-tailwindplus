@@ -1,0 +1,2 @@
+- Manage Python and dependencies using `uv`, e.g. `uv add [package]`.
+- When done editing code, use `uv run ruff` to check and format
