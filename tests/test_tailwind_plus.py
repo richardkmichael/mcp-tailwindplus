@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_tailwindui.tailwind_plus import TailwindPlus
+from mcp_tailwindplus.tailwind_plus import TailwindPlus
 
 
 @pytest.fixture
 def sample_data():
-    """Fragment of real TailwindUI component data for testing."""
+    """Fragment of real TailwindPlus component data for testing."""
     return {
         "application_ui": {
             "forms": {

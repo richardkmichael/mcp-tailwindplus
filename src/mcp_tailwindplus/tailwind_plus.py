@@ -1,10 +1,10 @@
-import os
 import json
-from typing import Dict, List, Union, TextIO, Annotated
+import os
+from typing import Annotated, TextIO
 
 
 class TailwindPlus:
-    def __init__(self, data_source: Union[str, TextIO, None] = None):
+    def __init__(self, data_source: str | TextIO | None = None):
         if data_source is None:
             # Use default file path
             data_source = (
@@ -46,7 +46,7 @@ class TailwindPlus:
 
         return paths
 
-    def _get_by_path(self, path: str) -> Dict:
+    def _get_by_path(self, path: str) -> dict:
         """Efficiently get component data by dotted path without full flattening."""
         keys = path.split(".")
         current = self.data
@@ -59,13 +59,13 @@ class TailwindPlus:
 
         return current
 
-    def list_component_names(self) -> List[str]:
+    def list_component_names(self) -> list[str]:
         """Get a complete list of all available TailwindPlus component names."""
         return self._component_names
 
     def get_component_by_name(
         self, name: Annotated[str, "The dotted path name of the component to retrieve"]
-    ) -> Dict:
+    ) -> dict:
         """Retrieve a specific TailwindPlus component by its dotted path name."""
         component_data = self._get_by_path(name)
         # If component doesn't exist, _get_by_path returns {}, so we return {name: {}}
@@ -76,7 +76,7 @@ class TailwindPlus:
     def search_components_by_name(
         self,
         search_term: Annotated[str, "The search term to match against component names"],
-    ) -> List[str]:
+    ) -> list[str]:
         """Search for TailwindPlus components by name pattern or keyword."""
         return [
             name

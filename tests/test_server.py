@@ -4,13 +4,13 @@ from io import StringIO
 import pytest
 from fastmcp import Client
 
-from mcp_tailwindui.server import create_server
-from mcp_tailwindui.tailwind_plus import TailwindPlus
+from mcp_tailwindplus.server import create_server
+from mcp_tailwindplus.tailwind_plus import TailwindPlus
 
 
 @pytest.fixture
 def sample_mcp_data():
-    """Sample TailwindUI data for MCP testing."""
+    """Sample TailwindPlus data for MCP testing."""
     return {
         "application_ui": {
             "forms": {
@@ -184,7 +184,7 @@ class TestMCPServerMetadata:
 
     def test_server_name_and_instructions(self, mcp_server):
         """Test server name and instructions."""
-        assert mcp_server.name == "tailwindui"
+        assert mcp_server.name == "tailwindplus"
         assert "component browser" in mcp_server.instructions.lower()
 
     @pytest.mark.asyncio

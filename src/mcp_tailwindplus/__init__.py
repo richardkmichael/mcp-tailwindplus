@@ -1,11 +1,15 @@
-"""Main entry point for MCP TailwindUI server."""
+"""MCP TailwindPlus - FastMCP server for browsing TailwindPlus components."""
 
 import sys
-from mcp_tailwindui import create_server
+
+__version__ = "0.1.0"
+
+from .server import create_server
+from .tailwind_plus import TailwindPlus
 
 
 def main():
-    """Start the MCP TailwindUI server."""
+    """Main entry point - start the MCP TailwindPlus server."""
     try:
         # Create the server
         mcp_server = create_server()
@@ -19,6 +23,9 @@ def main():
     except Exception as e:
         print(f"Error starting server: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+__all__ = ["__version__", "create_server", "TailwindPlus", "main"]
 
 
 if __name__ == "__main__":
