@@ -45,11 +45,11 @@ class TestMCPServerFunctionality:
         async with Client(mcp_server) as client:
             result = await client.call_tool("list_component_names", {})
 
-            assert len(result) == 1
-            assert result[0].text is not None
+            assert len(result.content) == 1
+            assert result.content[0].text is not None
 
             # The result comes back as JSON string from FastMCP Client
-            component_names = json.loads(result[0].text)
+            component_names = json.loads(result.content[0].text)
             assert isinstance(component_names, list)
             assert len(component_names) == 4
 
@@ -70,11 +70,11 @@ class TestMCPServerFunctionality:
                 {"name": "application_ui.forms.input_groups.with_icon"},
             )
 
-            assert len(result) == 1
-            assert result[0].text is not None
+            assert len(result.content) == 1
+            assert result.content[0].text is not None
 
             # Parse the JSON result
-            component_data = json.loads(result[0].text)
+            component_data = json.loads(result.content[0].text)
             assert isinstance(component_data, dict)
             assert "application_ui.forms.input_groups.with_icon" in component_data
 
@@ -90,8 +90,8 @@ class TestMCPServerFunctionality:
                 "get_component_by_name", {"name": "nonexistent.component"}
             )
 
-            assert len(result) == 1
-            assert result[0].text is not None
+            assert len(result.content) == 1
+            assert result.content[0].text is not None
 
             # Parse the JSON result
             component_data = json.loads(result[0].text)
@@ -107,11 +107,11 @@ class TestMCPServerFunctionality:
                 "search_components_by_name", {"search_term": "forms"}
             )
 
-            assert len(result) == 1
-            assert result[0].text is not None
+            assert len(result.content) == 1
+            assert result.content[0].text is not None
 
             # Parse the JSON result
-            search_results = json.loads(result[0].text)
+            search_results = json.loads(result.content[0].text)
             assert isinstance(search_results, list)
             assert len(search_results) == 2
 
@@ -135,13 +135,13 @@ class TestMCPServerFunctionality:
                 "search_components_by_name", {"search_term": "HERO"}
             )
 
-            assert len(result_lower) == 1
-            assert len(result_upper) == 1
+            assert len(result_lower.content) == 1
+            assert len(result_upper.content) == 1
 
             # The results come back as JSON strings from FastMCP Client
             # For single results, FastMCP might return the item directly instead of a list
-            lower_text = result_lower[0].text
-            upper_text = result_upper[0].text
+            lower_text = result_lower.content[0].text
+            upper_text = result_upper.content[0].text
 
             # Try to parse as JSON, if it fails it might be a single string
             try:
@@ -170,10 +170,10 @@ class TestMCPServerFunctionality:
             )
 
             # Handle empty results - might return no content or empty list
-            if len(result) == 0:
+            if len(result.content) == 0:
                 search_results = []
             else:
-                search_results = json.loads(result[0].text)
+                search_results = json.loads(result.content[0].text)
 
             assert isinstance(search_results, list)
             assert len(search_results) == 0
@@ -246,18 +246,18 @@ class TestMCPServerIntegration:
         async with Client(mcp_server) as client:
             # First, get all component names
             list_result = await client.call_tool("list_component_names", {})
-            assert len(list_result) == 1
+            assert len(list_result.content) == 1
 
-            all_names = json.loads(list_result[0].text)
+            all_names = json.loads(list_result.content[0].text)
 
             # Then try to get each component
             for name in all_names:
                 get_result = await client.call_tool(
                     "get_component_by_name", {"name": name}
                 )
-                assert len(get_result) == 1
+                assert len(get_result.content) == 1
 
-                component_data = json.loads(get_result[0].text)
+                component_data = json.loads(get_result.content[0].text)
                 assert name in component_data
                 assert component_data[name] != {}
 
@@ -269,18 +269,18 @@ class TestMCPServerIntegration:
             search_result = await client.call_tool(
                 "search_components_by_name", {"search_term": "application_ui"}
             )
-            assert len(search_result) == 1
+            assert len(search_result.content) == 1
 
-            search_names = json.loads(search_result[0].text)
+            search_names = json.loads(search_result.content[0].text)
 
             # Verify each search result can be retrieved
             for name in search_names:
                 get_result = await client.call_tool(
                     "get_component_by_name", {"name": name}
                 )
-                assert len(get_result) == 1
+                assert len(get_result.content) == 1
 
-                component_data = json.loads(get_result[0].text)
+                component_data = json.loads(get_result.content[0].text)
                 assert name in component_data
 
                 # Verify component has expected structure
