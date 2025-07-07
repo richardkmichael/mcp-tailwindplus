@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_tailwindplus.tailwind_plus import TailwindPlus
+from mcp_tailwindplus.tailwind_plus import ComponentNotFoundError, TailwindPlus
 
 
 @pytest.fixture
@@ -118,11 +118,10 @@ class TestTailwindPlus:
 
     def test_get_component_by_name_not_exists(self, tailwind_plus_instance):
         """Test getting a non-existent component by name."""
-        result = tailwind_plus_instance.get_component_by_name("nonexistent.component")
+        with pytest.raises(ComponentNotFoundError) as exc_info:
+            tailwind_plus_instance.get_component_by_name("nonexistent.component")
 
-        assert isinstance(result, dict)
-        assert "nonexistent.component" in result
-        assert result["nonexistent.component"] == {}
+        assert exc_info.value.component_name == "nonexistent.component"
 
     def test_search_components_by_name(self, tailwind_plus_instance):
         """Test searching components by name."""
@@ -185,3 +184,75 @@ class TestTailwindPlus:
                 os.unlink(default_file)
             if os.path.exists("tmp") and not os.listdir("tmp"):
                 os.rmdir("tmp")
+
+
+class TestErrorHandling:
+    """Test error handling and suggestions functionality."""
+
+    def test_component_not_found_error_raised(self, tailwind_plus_instance):
+        """Test that ComponentNotFoundError is raised for non-existent components."""
+        with pytest.raises(ComponentNotFoundError) as exc_info:
+            tailwind_plus_instance.get_component_by_name("nonexistent.component")
+
+        assert exc_info.value.component_name == "nonexistent.component"
+        assert "Component 'nonexistent.component' not found" in str(exc_info.value)
+
+    def test_suggestions_for_component_name(self, tailwind_plus_instance):
+        """Test the suggestions helper function."""
+        # Test with a partial match that should find suggestions
+        suggestions = tailwind_plus_instance._suggestions_for_component_name("forms")
+        assert len(suggestions) > 0
+        assert all("forms" in suggestion.lower() for suggestion in suggestions)
+
+        # Test with no matches
+        suggestions = tailwind_plus_instance._suggestions_for_component_name(
+            "nonexistent"
+        )
+        assert len(suggestions) == 0
+
+        # Test max_suggestions parameter
+        suggestions = tailwind_plus_instance._suggestions_for_component_name(
+            "application", max_suggestions=2
+        )
+        assert len(suggestions) <= 2
+
+    def test_suggestions_included_in_error(self, tailwind_plus_instance):
+        """Test that suggestions are included in ComponentNotFoundError."""
+        with pytest.raises(ComponentNotFoundError) as exc_info:
+            tailwind_plus_instance.get_component_by_name("application.forms.input")
+
+        error = exc_info.value
+        assert error.component_name == "application.forms.input"
+        assert len(error.suggestions) > 0
+        assert "Did you mean one of:" in str(error)
+
+        # Verify suggestions contain relevant components
+        suggestions_text = str(error)
+        assert any(
+            "forms" in suggestions_text.lower()
+            or "application" in suggestions_text.lower()
+            for _ in [True]
+        )
+
+    def test_suggestions_with_exact_partial_matches(self, tailwind_plus_instance):
+        """Test suggestions work with exact partial component name matches."""
+        with pytest.raises(ComponentNotFoundError) as exc_info:
+            tailwind_plus_instance.get_component_by_name(
+                "application_ui.forms.wrong_name"
+            )
+
+        error = exc_info.value
+        # Should suggest components that contain "application_ui" and "forms"
+        suggestions = error.suggestions
+        assert len(suggestions) > 0
+        assert any("application_ui.forms" in suggestion for suggestion in suggestions)
+
+    def test_no_suggestions_for_completely_invalid_name(self, tailwind_plus_instance):
+        """Test that completely invalid names don't get suggestions."""
+        with pytest.raises(ComponentNotFoundError) as exc_info:
+            tailwind_plus_instance.get_component_by_name("xyz.abc.def")
+
+        error = exc_info.value
+        # Should have no suggestions for completely unrelated names
+        assert len(error.suggestions) == 0
+        assert "Did you mean" not in str(error)

@@ -2,6 +2,21 @@ import json
 import os
 from typing import Annotated, TextIO
 
+class ComponentNotFoundError(Exception):
+    """Raised when a component is not found by its name."""
+
+    def __init__(self, component_name: str, suggestions: list[str] | None = None):
+        self.component_name = component_name
+        self.suggestions = suggestions or []
+
+        # Create a helpful error message
+        message = f"Component '{component_name}' not found."
+
+        if self.suggestions:
+            message += f" Did you mean one of: {', '.join(self.suggestions)}?"
+
+        super().__init__(message)
+
 
 class TailwindPlus:
     def __init__(self, data_source: str | TextIO | None = None):
@@ -46,6 +61,20 @@ class TailwindPlus:
 
         return paths
 
+    def _suggestions_for_component_name(
+        self, name: str, max_suggestions: int = 5
+    ) -> list[str]:
+        """Generate component name suggestions based on partial matches."""
+        name_parts = [part.lower() for part in name.lower().split(".")]
+
+        suggestions = [
+            comp_name
+            for comp_name in self._component_names
+            if any(part in comp_name.lower() for part in name_parts)
+        ]
+
+        return suggestions[:max_suggestions]
+
     def _get_by_path(self, path: str) -> dict:
         """Efficiently get component data by dotted path without full flattening."""
         keys = path.split(".")
@@ -68,9 +97,12 @@ class TailwindPlus:
     ) -> dict:
         """Retrieve a specific TailwindPlus component by its dotted path name."""
         component_data = self._get_by_path(name)
-        # If component doesn't exist, _get_by_path returns {}, so we return {name: {}}
+
+        # If component doesn't exist, raise our custom exception
         if not component_data:
-            return {name: {}}
+            suggestions = self._suggestions_for_component_name(name)
+            raise ComponentNotFoundError(name, suggestions)
+
         return {name: component_data}
 
     def search_components_by_name(

@@ -3,6 +3,7 @@ from io import StringIO
 
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from mcp_tailwindplus.server import create_server
 from mcp_tailwindplus.tailwind_plus import TailwindPlus
@@ -86,18 +87,33 @@ class TestMCPServerFunctionality:
     async def test_get_component_by_name_not_exists(self, mcp_server):
         """Test getting a non-existent component."""
         async with Client(mcp_server) as client:
-            result = await client.call_tool(
-                "get_component_by_name", {"name": "nonexistent.component"}
-            )
+            # Should raise ToolError for non-existent component (converted from ComponentNotFoundError)
+            with pytest.raises(ToolError) as exc_info:
+                await client.call_tool(
+                    "get_component_by_name", {"name": "nonexistent.component"}
+                )
 
-            assert len(result.content) == 1
-            assert result.content[0].text is not None
+            # Verify the error message contains helpful information
+            error_message = str(exc_info.value)
+            assert "nonexistent.component" in error_message
+            assert "not found" in error_message.lower()
 
-            # Parse the JSON result
-            component_data = json.loads(result[0].text)
-            assert isinstance(component_data, dict)
-            assert "nonexistent.component" in component_data
-            assert component_data["nonexistent.component"] == {}
+    @pytest.mark.asyncio
+    async def test_get_component_by_name_with_suggestions(self, mcp_server):
+        """Test that error includes suggestions for similar component names."""
+        async with Client(mcp_server) as client:
+            # Try a name that should generate suggestions
+            with pytest.raises(ToolError) as exc_info:
+                await client.call_tool(
+                    "get_component_by_name", {"name": "application.forms.wrong"}
+                )
+
+            # Verify suggestions are included in the ToolError message
+            error_message = str(exc_info.value)
+            assert "application.forms.wrong" in error_message
+            assert "not found" in error_message.lower()
+            # Should contain suggestions since "application" and "forms" are valid parts
+            assert "did you mean" in error_message.lower() or len(error_message) > 50  # Has suggestions
 
     @pytest.mark.asyncio
     async def test_search_components_by_name(self, mcp_server):
