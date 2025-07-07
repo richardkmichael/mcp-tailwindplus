@@ -5,7 +5,11 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_tailwindplus.tailwind_plus import ComponentNotFoundError, TailwindPlus
+from mcp_tailwindplus.tailwind_plus import (
+    Component,
+    ComponentNotFoundError,
+    TailwindPlus,
+)
 
 
 @pytest.fixture
@@ -78,8 +82,8 @@ def tailwind_plus_instance(sample_data):
 class TestTailwindPlus:
     def test_init_loads_data(self, tailwind_plus_instance, sample_data):
         """Test that initialization loads data correctly."""
-        assert tailwind_plus_instance.data == sample_data
-        assert len(tailwind_plus_instance._component_names) > 0
+        assert tailwind_plus_instance.version == "test"
+        assert len(tailwind_plus_instance.list_component_names()) > 0
 
     def test_get_component_paths(self, tailwind_plus_instance):
         """Test that component paths are extracted correctly."""
@@ -89,7 +93,7 @@ class TestTailwindPlus:
             "application_ui.navigation.breadcrumbs.simple",
         ]
 
-        paths = tailwind_plus_instance._component_names
+        paths = tailwind_plus_instance.list_component_names()
         assert sorted(paths) == sorted(expected_paths)
 
     def test_list_component_names(self, tailwind_plus_instance):
@@ -108,13 +112,14 @@ class TestTailwindPlus:
             "application_ui.forms.input_groups.label_with_leading_icon"
         )
 
-        assert isinstance(result, dict)
-        assert "application_ui.forms.input_groups.label_with_leading_icon" in result
-        component_data = result[
-            "application_ui.forms.input_groups.label_with_leading_icon"
-        ]
-        assert isinstance(component_data, str)
-        assert "Email" in component_data
+        assert isinstance(result, Component)
+        assert (
+            result.name == "application_ui.forms.input_groups.label_with_leading_icon"
+        )
+        assert result.short_name == "label_with_leading_icon"
+        assert result.version == "test"
+        assert isinstance(result.html, str)
+        assert "Email" in result.html
 
     def test_get_component_by_name_not_exists(self, tailwind_plus_instance):
         """Test getting a non-existent component by name."""

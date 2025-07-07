@@ -1,6 +1,16 @@
 import json
 import os
+from dataclasses import dataclass
 from typing import Annotated, TextIO
+
+
+@dataclass
+class Component:
+    version: str
+    name: str
+    short_name: str
+    html: str
+
 
 class ComponentNotFoundError(Exception):
     """Raised when a component is not found by its name."""
@@ -27,39 +37,72 @@ class TailwindPlus:
                 or "tmp/tailwindplus-components-2025-06-10-221317.json"
             )
 
+        # Store the data source path for version extraction
+        self._data_source_path = data_source if isinstance(data_source, str) else None
+
         if isinstance(data_source, str):
             # It's a file path
             with open(data_source) as f:
-                self.data = json.load(f)
+                raw_data = json.load(f)
         else:
             # It's a file-like object (StringIO, etc.)
-            self.data = json.load(data_source)
+            raw_data = json.load(data_source)
 
-        # Cache component names for list/search operations
-        self._component_names = self._get_component_paths(self.data)
+        # Extract version from filename and flatten to components
+        self.version = self._extract_version()
+        self._components_by_name = self._flatten_to_components(raw_data)
 
-    def _get_component_paths(self, obj, prefix=""):
-        """Recursively get all component paths as a list."""
-        paths = []
+    def _extract_version(self) -> str:
+        """Extract version from filename like 'tailwindplus-components-2025-06-10-221317.json'."""
+        if not self._data_source_path:
+            return "test"  # Default version for tests or StringIO usage
+
+        filename = os.path.basename(self._data_source_path)
+        # Extract the part between 'tailwindplus-components-' and '.json'
+        if filename.startswith("tailwindplus-components-") and filename.endswith(
+            ".json"
+        ):
+            return filename[len("tailwindplus-components-") : -len(".json")]
+
+        raise ValueError(f"Cannot determine version from filename: {filename}")
+
+    def _flatten_to_components(
+        self, obj: dict, prefix: str = ""
+    ) -> dict[str, Component]:
+        """Transform JSON tree to flat dict of Component objects in a single pass."""
+        components = {}
 
         if isinstance(obj, dict):
             for key, value in obj.items():
                 current_path = ".".join([prefix, key]) if prefix else key
 
-                # If value is not a dict, it's a leaf
-                if not isinstance(value, dict):
-                    paths.append(current_path)
-                # If dict has no dict children (all values are strings), then each key is a component
-                elif not any(isinstance(v, dict) for v in value.values()):
-                    # All values are strings (HTML), so each key at this level is a component
-                    for component_key in value.keys():
-                        component_path = ".".join([current_path, component_key])
-                        paths.append(component_path)
-                else:
-                    # Recurse deeper
-                    paths.extend(self._get_component_paths(value, current_path))
+                if isinstance(value, str):
+                    # This is a component (HTML string) - current_path is already the full path
+                    components[current_path] = Component(
+                        version=self.version,
+                        name=current_path,
+                        short_name=key,
+                        html=value,
+                    )
+                elif isinstance(value, dict):
+                    # Check if this dict contains only string values (components)
+                    if all(isinstance(v, str) for v in value.values()):
+                        # All values are HTML strings, so each key is a component
+                        for comp_key, comp_html in value.items():
+                            comp_path = ".".join([current_path, comp_key])
+                            components[comp_path] = Component(
+                                version=self.version,
+                                name=comp_path,
+                                short_name=comp_key,
+                                html=comp_html,
+                            )
+                    else:
+                        # Mixed content, recurse deeper
+                        components.update(
+                            self._flatten_to_components(value, current_path)
+                        )
 
-        return paths
+        return components
 
     def _suggestions_for_component_name(
         self, name: str, *, max_suggestions: int | None = None
@@ -69,49 +112,41 @@ class TailwindPlus:
 
         suggestions = [
             comp_name
-            for comp_name in self._component_names
+            for comp_name in self._components_by_name.keys()
             if any(part in comp_name.lower() for part in name_parts)
         ]
 
         return suggestions if max_suggestions is None else suggestions[:max_suggestions]
 
-    def _get_by_path(self, path: str) -> dict:
-        """Efficiently get component data by dotted path without full flattening."""
-        keys = path.split(".")
-        current = self.data
-
-        for key in keys:
-            if isinstance(current, dict) and key in current:
-                current = current[key]
-            else:
-                return {}
-
-        return current
-
     def list_component_names(self) -> list[str]:
         """Get a complete list of all available TailwindPlus component names."""
-        return self._component_names
+        return list(self._components_by_name.keys())
 
     def get_component_by_name(
-        self, name: Annotated[str, "The dotted path name of the component to retrieve"]
-    ) -> dict:
+        self,
+        name: Annotated[
+            str,
+            "The dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Input with label')",
+        ],
+    ) -> Component:
         """Retrieve a specific TailwindPlus component by its dotted path name.
 
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        component_data = self._get_by_path(name)
+        if name in self._components_by_name:
+            return self._components_by_name[name]
 
-        # If component doesn't exist, raise our custom exception
-        if not component_data:
-            suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
-            raise ComponentNotFoundError(name, suggestions)
-
-        return {name: component_data}
+        # Component not found, generate suggestions
+        suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
+        raise ComponentNotFoundError(name, suggestions)
 
     def search_components_by_name(
         self,
-        search_term: Annotated[str, "The search term to match against component names"],
+        search_term: Annotated[
+            str,
+            "Search term to match against component names (case-insensitive, supports partial matches)",
+        ],
     ) -> list[str]:
         """Search for TailwindPlus components by name pattern or keyword."""
         return self._suggestions_for_component_name(search_term)

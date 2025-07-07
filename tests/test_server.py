@@ -77,11 +77,13 @@ class TestMCPServerFunctionality:
             # Parse the JSON result
             component_data = json.loads(result.content[0].text)
             assert isinstance(component_data, dict)
-            assert "application_ui.forms.input_groups.with_icon" in component_data
-
-            component = component_data["application_ui.forms.input_groups.with_icon"]
-            assert isinstance(component, str)
-            assert "form-input" in component
+            assert (
+                component_data["name"] == "application_ui.forms.input_groups.with_icon"
+            )
+            assert component_data["short_name"] == "with_icon"
+            assert component_data["version"] == "test"
+            assert isinstance(component_data["html"], str)
+            assert "form-input" in component_data["html"]
 
     @pytest.mark.asyncio
     async def test_get_component_by_name_not_exists(self, mcp_server):
@@ -113,7 +115,9 @@ class TestMCPServerFunctionality:
             assert "application.forms.wrong" in error_message
             assert "not found" in error_message.lower()
             # Should contain suggestions since "application" and "forms" are valid parts
-            assert "did you mean" in error_message.lower() or len(error_message) > 50  # Has suggestions
+            assert (
+                "did you mean" in error_message.lower() or len(error_message) > 50
+            )  # Has suggestions
 
     @pytest.mark.asyncio
     async def test_search_components_by_name(self, mcp_server):
@@ -274,8 +278,8 @@ class TestMCPServerIntegration:
                 assert len(get_result.content) == 1
 
                 component_data = json.loads(get_result.content[0].text)
-                assert name in component_data
-                assert component_data[name] != {}
+                assert component_data["name"] == name
+                assert component_data["html"] != ""
 
     @pytest.mark.asyncio
     async def test_search_returns_valid_components(self, mcp_server):
@@ -297,9 +301,10 @@ class TestMCPServerIntegration:
                 assert len(get_result.content) == 1
 
                 component_data = json.loads(get_result.content[0].text)
-                assert name in component_data
+                assert component_data["name"] == name
 
                 # Verify component has expected structure
-                component = component_data[name]
-                assert isinstance(component, str)
-                assert len(component) > 0
+                assert isinstance(component_data["html"], str)
+                assert len(component_data["html"]) > 0
+                assert component_data["version"] == "test"
+                assert component_data["short_name"] is not None
