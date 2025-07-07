@@ -20,10 +20,11 @@ class ComponentNotFoundError(Exception):
         self.suggestions = suggestions or []
 
         # Create a helpful error message
-        message = f"Component '{component_name}' not found."
+        message = f"Component `{component_name}` not found."
 
         if self.suggestions:
-            message += f" Did you mean one of: {', '.join(self.suggestions)}?"
+            quoted_suggestions = [f"`{suggestion}`" for suggestion in self.suggestions]
+            message += f" Did you mean one of: {', '.join(quoted_suggestions)}?"
 
         super().__init__(message)
 

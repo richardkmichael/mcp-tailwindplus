@@ -185,7 +185,7 @@ class TestErrorHandling:
             tailwind_plus_instance.get_component_by_name("nonexistent.component")
 
         assert exc_info.value.component_name == "nonexistent.component"
-        assert "Component 'nonexistent.component' not found" in str(exc_info.value)
+        assert "Component `nonexistent.component` not found" in str(exc_info.value)
 
     def test_suggestions_for_component_name(self, tailwind_plus_instance):
         """Test the suggestions helper function."""
