@@ -141,12 +141,12 @@ class TailwindPlus:
         suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
         raise ComponentNotFoundError(name, suggestions)
 
-    def search_components_by_name(
+    def search_component_names(
         self,
         search_term: Annotated[
             str,
             "Search term to match against component names (case-insensitive, supports partial matches)",
         ],
     ) -> list[str]:
-        """Search for TailwindPlus components by name pattern or keyword."""
+        """Search for TailwindPlus component names by pattern or keyword."""
         return self._suggestions_for_component_name(search_term)

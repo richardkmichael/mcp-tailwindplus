@@ -120,11 +120,11 @@ class TestMCPServerFunctionality:
             )  # Has suggestions
 
     @pytest.mark.asyncio
-    async def test_search_components_by_name(self, mcp_server):
-        """Test searching for components."""
+    async def test_search_component_names(self, mcp_server):
+        """Test searching for component names."""
         async with Client(mcp_server) as client:
             result = await client.call_tool(
-                "search_components_by_name", {"search_term": "forms"}
+                "search_component_names", {"search_term": "forms"}
             )
 
             assert len(result.content) == 1
@@ -147,12 +147,12 @@ class TestMCPServerFunctionality:
         async with Client(mcp_server) as client:
             # Test lowercase
             result_lower = await client.call_tool(
-                "search_components_by_name", {"search_term": "hero"}
+                "search_component_names", {"search_term": "hero"}
             )
 
             # Test uppercase
             result_upper = await client.call_tool(
-                "search_components_by_name", {"search_term": "HERO"}
+                "search_component_names", {"search_term": "HERO"}
             )
 
             assert len(result_lower.content) == 1
@@ -186,7 +186,7 @@ class TestMCPServerFunctionality:
         """Test search with no matches."""
         async with Client(mcp_server) as client:
             result = await client.call_tool(
-                "search_components_by_name", {"search_term": "nonexistent"}
+                "search_component_names", {"search_term": "nonexistent"}
             )
 
             # Handle empty results - might return no content or empty list
@@ -216,7 +216,7 @@ class TestMCPServerMetadata:
         expected_tools = [
             "list_component_names",
             "get_component_by_name",
-            "search_components_by_name",
+            "search_component_names",
         ]
 
         for tool_name in expected_tools:
@@ -248,10 +248,10 @@ class TestMCPServerMetadata:
         assert "components" in get_tool.tags
 
         # Test search tool
-        search_tool = tools["search_components_by_name"]
+        search_tool = tools["search_component_names"]
         assert (
             search_tool.description
-            == "Search for TailwindPlus components by name pattern or keyword (case-insensitive)"
+            == "Search for TailwindPlus component names by pattern or keyword (case-insensitive)"
         )
         assert "search" in search_tool.tags
         assert "components" in search_tool.tags
@@ -287,7 +287,7 @@ class TestMCPServerIntegration:
         async with Client(mcp_server) as client:
             # Search for components
             search_result = await client.call_tool(
-                "search_components_by_name", {"search_term": "application_ui"}
+                "search_component_names", {"search_term": "application_ui"}
             )
             assert len(search_result.content) == 1
 

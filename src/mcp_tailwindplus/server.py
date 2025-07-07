@@ -46,11 +46,11 @@ def create_server(tailwind_plus_instance: TailwindPlus = None) -> FastMCP:
     )
 
     server.tool(
-        tailwind_plus_instance.search_components_by_name,
-        description="Search for TailwindPlus components by name pattern or keyword (case-insensitive)",
+        tailwind_plus_instance.search_component_names,
+        description="Search for TailwindPlus component names by pattern or keyword (case-insensitive)",
         tags={"search", "components", "find"},
         annotations={
-            "title": "Search Components",
+            "title": "Search Component Names",
             "readOnlyHint": True,
             "idempotentHint": True,
         },

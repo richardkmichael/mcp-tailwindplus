@@ -128,10 +128,10 @@ class TestTailwindPlus:
 
         assert exc_info.value.component_name == "nonexistent.component"
 
-    def test_search_components_by_name(self, tailwind_plus_instance):
-        """Test searching components by name."""
+    def test_search_component_names(self, tailwind_plus_instance):
+        """Test searching for component names."""
         # Search for "forms" should return form-related components
-        results = tailwind_plus_instance.search_components_by_name("forms")
+        results = tailwind_plus_instance.search_component_names("forms")
 
         assert isinstance(results, list)
         assert len(results) == 2  # input_groups and select_menus
@@ -139,8 +139,8 @@ class TestTailwindPlus:
 
     def test_search_components_case_insensitive(self, tailwind_plus_instance):
         """Test that search is case insensitive."""
-        results_lower = tailwind_plus_instance.search_components_by_name("breadcrumbs")
-        results_upper = tailwind_plus_instance.search_components_by_name("BREADCRUMBS")
+        results_lower = tailwind_plus_instance.search_component_names("breadcrumbs")
+        results_upper = tailwind_plus_instance.search_component_names("BREADCRUMBS")
 
         assert results_lower == results_upper
         assert len(results_lower) == 1
@@ -148,7 +148,7 @@ class TestTailwindPlus:
 
     def test_search_components_no_match(self, tailwind_plus_instance):
         """Test searching with no matches."""
-        results = tailwind_plus_instance.search_components_by_name("nonexistent")
+        results = tailwind_plus_instance.search_component_names("nonexistent")
 
         assert isinstance(results, list)
         assert len(results) == 0
