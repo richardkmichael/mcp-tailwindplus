@@ -62,7 +62,7 @@ class TailwindPlus:
         return paths
 
     def _suggestions_for_component_name(
-        self, name: str, max_suggestions: int = 5
+        self, name: str, *, max_suggestions: int | None = None
     ) -> list[str]:
         """Generate component name suggestions based on partial matches."""
         name_parts = [part.lower() for part in name.lower().split(".")]
@@ -73,7 +73,7 @@ class TailwindPlus:
             if any(part in comp_name.lower() for part in name_parts)
         ]
 
-        return suggestions[:max_suggestions]
+        return suggestions if max_suggestions is None else suggestions[:max_suggestions]
 
     def _get_by_path(self, path: str) -> dict:
         """Efficiently get component data by dotted path without full flattening."""
@@ -95,12 +95,16 @@ class TailwindPlus:
     def get_component_by_name(
         self, name: Annotated[str, "The dotted path name of the component to retrieve"]
     ) -> dict:
-        """Retrieve a specific TailwindPlus component by its dotted path name."""
+        """Retrieve a specific TailwindPlus component by its dotted path name.
+
+        If the component is not found, raises ComponentNotFoundError with up to 5
+        suggested component names based on partial matches.
+        """
         component_data = self._get_by_path(name)
 
         # If component doesn't exist, raise our custom exception
         if not component_data:
-            suggestions = self._suggestions_for_component_name(name)
+            suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
             raise ComponentNotFoundError(name, suggestions)
 
         return {name: component_data}
@@ -110,8 +114,4 @@ class TailwindPlus:
         search_term: Annotated[str, "The search term to match against component names"],
     ) -> list[str]:
         """Search for TailwindPlus components by name pattern or keyword."""
-        return [
-            name
-            for name in self._component_names
-            if search_term.lower() in name.lower()
-        ]
+        return self._suggestions_for_component_name(search_term)
