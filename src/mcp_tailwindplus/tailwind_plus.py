@@ -30,13 +30,8 @@ class ComponentNotFoundError(Exception):
 
 
 class TailwindPlus:
-    def __init__(self, data_source: str | TextIO | None = None):
-        if data_source is None:
-            # Use default file path
-            data_source = (
-                os.environ.get("MCP_TAILWINDPLUS_DATA")
-                or "tmp/tailwindplus-components-2025-06-10-221317.json"
-            )
+    def __init__(self, data_source: str | TextIO):
+        # data_source is now required - no more fallback to hardcoded path
 
         # Store the data source path for version extraction
         self._data_source_path = data_source if isinstance(data_source, str) else None

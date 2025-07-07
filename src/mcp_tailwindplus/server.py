@@ -5,10 +5,8 @@ from .tailwind_plus import TailwindPlus
 __all__ = ["create_server"]
 
 
-def create_server(tailwind_plus_instance: TailwindPlus = None) -> FastMCP:
+def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
     """Factory function to create server with TailwindPlus instance."""
-    if tailwind_plus_instance is None:
-        tailwind_plus_instance = TailwindPlus()
 
     server = FastMCP(
         name="tailwindplus",

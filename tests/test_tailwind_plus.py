@@ -1,7 +1,5 @@
 import json
-import os
 from io import StringIO
-from unittest.mock import patch
 
 import pytest
 
@@ -153,25 +151,24 @@ class TestTailwindPlus:
         assert isinstance(results, list)
         assert len(results) == 0
 
-    def test_default_data_file_path(self, sample_data, tmp_path):
-        """Test that default data file path is used when env var not set."""
+    def test_explicit_data_file_path(self, sample_data, tmp_path):
+        """Test that TailwindPlus loads data from explicitly provided file path."""
         # Use pytest's tmp_path fixture to create a proper temporary file
         test_file = tmp_path / "tailwindplus-components-test.json"
 
         with open(test_file, "w") as f:
             json.dump(sample_data, f)
 
-        # Set the env var to point to our test file
-        with patch.dict(os.environ, {"MCP_TAILWINDPLUS_DATA": str(test_file)}):
-            instance = TailwindPlus()
-            # Test that components were loaded correctly
-            component_names = instance.list_component_names()
-            expected_names = [
-                "application_ui.forms.input_groups.label_with_leading_icon",
-                "application_ui.forms.select_menus.simple",
-                "application_ui.navigation.breadcrumbs.simple",
-            ]
-            assert all(name in component_names for name in expected_names)
+        # Create instance with explicit file path
+        instance = TailwindPlus(str(test_file))
+        # Test that components were loaded correctly
+        component_names = instance.list_component_names()
+        expected_names = [
+            "application_ui.forms.input_groups.label_with_leading_icon",
+            "application_ui.forms.select_menus.simple",
+            "application_ui.navigation.breadcrumbs.simple",
+        ]
+        assert all(name in component_names for name in expected_names)
 
         # tmp_path automatically cleans up
 
