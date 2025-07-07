@@ -25,10 +25,10 @@ def create_server(tailwind_plus_instance: TailwindPlus = None) -> FastMCP:
 
     server.tool(
         tailwind_plus_instance.list_component_names,
+        description="Get a complete list of all available TailwindPlus component names organized by category",
         tags={"list", "components", "browse"},
         annotations={
             "title": "List All Components",
-            "description": "Get a complete list of all available TailwindPlus component names organized by category",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
@@ -36,10 +36,10 @@ def create_server(tailwind_plus_instance: TailwindPlus = None) -> FastMCP:
 
     server.tool(
         tailwind_plus_instance.get_component_by_name,
+        description="Retrieve the HTML/CSS code for a specific TailwindPlus component by its dotted path name",
         tags={"get", "components", "retrieve"},
         annotations={
             "title": "Get Component by Name",
-            "description": "Retrieve the HTML/CSS code for a specific TailwindPlus component by its dotted path name",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
@@ -47,10 +47,10 @@ def create_server(tailwind_plus_instance: TailwindPlus = None) -> FastMCP:
 
     server.tool(
         tailwind_plus_instance.search_components_by_name,
+        description="Search for TailwindPlus components by name pattern or keyword (case-insensitive)",
         tags={"search", "components", "find"},
         annotations={
             "title": "Search Components",
-            "description": "Search for TailwindPlus components by name pattern or keyword (case-insensitive)",
             "readOnlyHint": True,
             "idempotentHint": True,
         },

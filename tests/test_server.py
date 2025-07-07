@@ -227,7 +227,7 @@ class TestMCPServerMetadata:
         list_tool = tools["list_component_names"]
         assert (
             list_tool.description
-            == "Get a complete list of all available TailwindPlus component names."
+            == "Get a complete list of all available TailwindPlus component names organized by category"
         )
         assert "list" in list_tool.tags
         assert "components" in list_tool.tags
@@ -238,7 +238,7 @@ class TestMCPServerMetadata:
         get_tool = tools["get_component_by_name"]
         assert (
             get_tool.description
-            == "Retrieve a specific TailwindPlus component by its dotted path name."
+            == "Retrieve the HTML/CSS code for a specific TailwindPlus component by its dotted path name"
         )
         assert "get" in get_tool.tags
         assert "components" in get_tool.tags
@@ -247,7 +247,7 @@ class TestMCPServerMetadata:
         search_tool = tools["search_components_by_name"]
         assert (
             search_tool.description
-            == "Search for TailwindPlus components by name pattern or keyword."
+            == "Search for TailwindPlus components by name pattern or keyword (case-insensitive)"
         )
         assert "search" in search_tool.tags
         assert "components" in search_tool.tags
