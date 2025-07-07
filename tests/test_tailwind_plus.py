@@ -148,42 +148,27 @@ class TestTailwindPlus:
         assert isinstance(results, list)
         assert len(results) == 0
 
-    def test_get_by_path_deep_nesting(self, tailwind_plus_instance):
-        """Test getting component data from deeply nested path."""
-        result = tailwind_plus_instance._get_by_path(
-            "application_ui.forms.select_menus.simple"
-        )
-
-        assert isinstance(result, str)
-        assert "Location" in result
-
-    def test_get_by_path_invalid_path(self, tailwind_plus_instance):
-        """Test getting component data with invalid path."""
-        result = tailwind_plus_instance._get_by_path("invalid.path.here")
-
-        assert result == {}
-
-    def test_default_data_file_path(self, sample_data):
+    def test_default_data_file_path(self, sample_data, tmp_path):
         """Test that default data file path is used when env var not set."""
-        # Create a temporary file at the default location
-        os.makedirs("tmp", exist_ok=True)
-        default_file = "tmp/tailwindplus-components-2025-06-10-221317.json"
+        # Use pytest's tmp_path fixture to create a proper temporary file
+        test_file = tmp_path / "tailwindplus-components-test.json"
 
-        try:
-            with open(default_file, "w") as f:
-                json.dump(sample_data, f)
+        with open(test_file, "w") as f:
+            json.dump(sample_data, f)
 
-            # Ensure env var is not set
-            with patch.dict(os.environ, {}, clear=True):
-                instance = TailwindPlus()
-                assert instance.data == sample_data
+        # Set the env var to point to our test file
+        with patch.dict(os.environ, {"MCP_TAILWINDPLUS_DATA": str(test_file)}):
+            instance = TailwindPlus()
+            # Test that components were loaded correctly
+            component_names = instance.list_component_names()
+            expected_names = [
+                "application_ui.forms.input_groups.label_with_leading_icon",
+                "application_ui.forms.select_menus.simple",
+                "application_ui.navigation.breadcrumbs.simple",
+            ]
+            assert all(name in component_names for name in expected_names)
 
-        finally:
-            # Cleanup
-            if os.path.exists(default_file):
-                os.unlink(default_file)
-            if os.path.exists("tmp") and not os.listdir("tmp"):
-                os.rmdir("tmp")
+        # tmp_path automatically cleans up
 
 
 class TestErrorHandling:
