@@ -1,6 +1,5 @@
 from fastmcp import FastMCP
 
-from . import __version__
 from .tailwind_plus import TailwindPlus
 
 __all__ = ["create_server"]
@@ -13,8 +12,6 @@ def create_server(tailwind_plus_instance: TailwindPlus = None) -> FastMCP:
 
     server = FastMCP(
         name="tailwindplus",
-        title="TailwindPlus Component Browser",
-        version=__version__,
         instructions="""TailwindPlus component browser - search, list, and retrieve TailwindPlus components by name.
 
         This server provides access to a comprehensive library of TailwindPlus UI components including:
