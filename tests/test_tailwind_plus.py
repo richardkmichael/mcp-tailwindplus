@@ -47,7 +47,7 @@ def sample_data():
                                     "name": "html",
                                     "preview": "<div>Email input preview</div>",
                                     "supportsDarkMode": False,
-                                    "version": 4
+                                    "version": 4,
                                 },
                                 {
                                     "code": """<div>
@@ -61,9 +61,9 @@ def sample_data():
                                     "name": "react",
                                     "preview": "<div>Email input React preview</div>",
                                     "supportsDarkMode": False,
-                                    "version": 4
-                                }
-                            ]
+                                    "version": 4,
+                                },
+                            ],
                         }
                     },
                     "Select Menus": {
@@ -84,11 +84,11 @@ def sample_data():
                                     "name": "html",
                                     "preview": "<div>Select menu preview</div>",
                                     "supportsDarkMode": True,
-                                    "version": 4
+                                    "version": 4,
                                 }
-                            ]
+                            ],
                         }
-                    }
+                    },
                 },
                 "Navigation": {
                     "Breadcrumbs": {
@@ -123,14 +123,14 @@ def sample_data():
                                     "name": "html",
                                     "preview": "<nav>Breadcrumb preview</nav>",
                                     "supportsDarkMode": False,
-                                    "version": 4
+                                    "version": 4,
                                 }
-                            ]
+                            ],
                         }
                     }
-                }
+                },
             }
-        }
+        },
     }
 
 
@@ -173,18 +173,20 @@ class TestTailwindPlus:
         result = tailwind_plus_instance.get_component_by_name(
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
-            TailwindVersion.V4
+            TailwindVersion.V4,
         )
 
         assert isinstance(result, Component)
-        assert result.name == "Application UI.Forms.Input Groups.Label with leading icon"
+        assert (
+            result.name == "Application UI.Forms.Input Groups.Label with leading icon"
+        )
         assert result.short_name == "Label with leading icon"
         assert result.version == "test-2025-07-15"
         assert result.framework == Framework.HTML
         assert result.language == Language.HTML
         assert result.tailwind_version == TailwindVersion.V4
         assert result.mode == Mode.LIGHT
-        assert result.supportsDarkMode == False
+        assert not result.supportsDarkMode
         assert isinstance(result.code, str)
         assert "Email" in result.code
 
@@ -192,9 +194,7 @@ class TestTailwindPlus:
         """Test getting a non-existent component by name."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_name(
-                "nonexistent.component", 
-                Framework.HTML, 
-                TailwindVersion.V4
+                "nonexistent.component", Framework.HTML, TailwindVersion.V4
             )
 
         assert exc_info.value.component_name == "nonexistent.component"
@@ -253,9 +253,7 @@ class TestErrorHandling:
         """Test that ComponentNotFoundError is raised for non-existent components."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_name(
-                "nonexistent.component", 
-                Framework.HTML, 
-                TailwindVersion.V4
+                "nonexistent.component", Framework.HTML, TailwindVersion.V4
             )
 
         assert exc_info.value.component_name == "nonexistent.component"
@@ -284,9 +282,7 @@ class TestErrorHandling:
         """Test that suggestions are included in ComponentNotFoundError."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_name(
-                "Application.Forms.Input", 
-                Framework.HTML, 
-                TailwindVersion.V4
+                "Application.Forms.Input", Framework.HTML, TailwindVersion.V4
             )
 
         error = exc_info.value
@@ -297,8 +293,7 @@ class TestErrorHandling:
         # Verify suggestions contain relevant components
         suggestions_text = str(error)
         assert any(
-            "Forms" in suggestions_text
-            or "Application" in suggestions_text
+            "Forms" in suggestions_text or "Application" in suggestions_text
             for _ in [True]
         )
 
@@ -306,9 +301,7 @@ class TestErrorHandling:
         """Test suggestions work with exact partial component name matches."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_name(
-                "Application UI.Forms.Wrong Name",
-                Framework.HTML,
-                TailwindVersion.V4
+                "Application UI.Forms.Wrong Name", Framework.HTML, TailwindVersion.V4
             )
 
         error = exc_info.value
@@ -321,9 +314,7 @@ class TestErrorHandling:
         """Test that completely invalid names don't get suggestions."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_name(
-                "xyz.abc.def",
-                Framework.HTML,
-                TailwindVersion.V4
+                "xyz.abc.def", Framework.HTML, TailwindVersion.V4
             )
 
         error = exc_info.value
@@ -336,9 +327,9 @@ class TestErrorHandling:
         preview = tailwind_plus_instance.get_component_preview_by_name(
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
-            TailwindVersion.V4
+            TailwindVersion.V4,
         )
-        
+
         assert isinstance(preview, str)
         assert "Email input preview" in preview
 
@@ -346,9 +337,7 @@ class TestErrorHandling:
         """Test getting preview for non-existent component."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_preview_by_name(
-                "nonexistent.component",
-                Framework.HTML,
-                TailwindVersion.V4
+                "nonexistent.component", Framework.HTML, TailwindVersion.V4
             )
 
         assert exc_info.value.component_name == "nonexistent.component"
@@ -358,13 +347,16 @@ class TestErrorHandling:
         result = tailwind_plus_instance.get_component_by_name(
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.REACT,
-            TailwindVersion.V4
+            TailwindVersion.V4,
         )
 
         assert result.framework == Framework.REACT
         assert result.language == Language.JSX
-        assert "Email input React preview" in tailwind_plus_instance.get_component_preview_by_name(
-            "Application UI.Forms.Input Groups.Label with leading icon",
-            Framework.REACT,
-            TailwindVersion.V4
+        assert (
+            "Email input React preview"
+            in tailwind_plus_instance.get_component_preview_by_name(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                Framework.REACT,
+                TailwindVersion.V4,
+            )
         )

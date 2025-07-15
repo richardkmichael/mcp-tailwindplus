@@ -19,7 +19,7 @@ def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
 
         Components are available in multiple frameworks (HTML, React, Vue) and Tailwind CSS versions (3, 4).
         All components are production-ready and follow modern design patterns.
-        
+
         IMPORTANT: Always specify both framework (html/react/vue) and tailwind_version (3/4) when retrieving components.
         Use framework and version that match the user's project requirements.
         """,
