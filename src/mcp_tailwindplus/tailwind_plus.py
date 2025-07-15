@@ -32,10 +32,11 @@ class Component:
     name: str
     short_name: str
     code: str
-    framework: str
-    language: str # jsx | html
-    tailwind: int # 3 | 4
-    mode: str # light | dark
+    framework: Framework
+    language: Language
+    tailwind_version: TailwindVersion
+    mode: Mode | None
+    supportsDarkMode: bool
 
 
 
