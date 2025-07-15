@@ -12,12 +12,22 @@ from mcp_tailwindplus.tailwind_plus import (
 
 @pytest.fixture
 def sample_data():
-    """Fragment of real TailwindPlus component data for testing."""
+    """Fragment of real TailwindPlus component data for testing with new format."""
     return {
-        "application_ui": {
-            "forms": {
-                "input_groups": {
-                    "label_with_leading_icon": """<div>
+        "version": "test-2025-07-15",
+        "downloaded_at": "2025-07-15T00:00:00.000Z",
+        "component_count": 3,
+        "download_duration": "1.0s",
+        "downloader_version": "2.0.0",
+        "tailwindplus": {
+            "Application UI": {
+                "Forms": {
+                    "Input Groups": {
+                        "Label with leading icon": {
+                            "name": "Label with leading icon",
+                            "snippets": [
+                                {
+                                    "code": """<div>
   <label for="email" class="block text-sm font-medium leading-6 text-gray-900">Email</label>
   <div class="relative mt-2 rounded-md shadow-sm">
     <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -27,22 +37,62 @@ def sample_data():
     </div>
     <input type="email" name="email" id="email" class="block w-full rounded-md border-0 py-1.5 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" placeholder="you@example.com">
   </div>
-</div>"""
-                },
-                "select_menus": {
-                    "simple": """<div>
+</div>""",
+                                    "language": "html",
+                                    "mode": "light",
+                                    "name": "html",
+                                    "preview": "<div>Email input preview</div>",
+                                    "supportsDarkMode": false,
+                                    "version": 4
+                                },
+                                {
+                                    "code": """<div>
+  <label for="email" class="block text-sm font-medium leading-6 text-gray-900">Email</label>
+  <div class="relative mt-2 rounded-md shadow-sm">
+    <input type="email" name="email" id="email" class="block w-full rounded-md border-0 py-1.5 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" placeholder="you@example.com">
+  </div>
+</div>""",
+                                    "language": "jsx",
+                                    "mode": "light",
+                                    "name": "react",
+                                    "preview": "<div>Email input React preview</div>",
+                                    "supportsDarkMode": false,
+                                    "version": 4
+                                }
+                            ]
+                        }
+                    },
+                    "Select Menus": {
+                        "Simple": {
+                            "name": "Simple",
+                            "snippets": [
+                                {
+                                    "code": """<div>
   <label for="location" class="block text-sm font-medium leading-6 text-gray-900">Location</label>
   <select id="location" name="location" class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
     <option>United States</option>
     <option>Canada</option>
     <option>Mexico</option>
   </select>
-</div>"""
+</div>""",
+                                    "language": "html",
+                                    "mode": "light",
+                                    "name": "html",
+                                    "preview": "<div>Select menu preview</div>",
+                                    "supportsDarkMode": true,
+                                    "version": 4
+                                }
+                            ]
+                        }
+                    }
                 },
-            },
-            "navigation": {
-                "breadcrumbs": {
-                    "simple": """<nav class="flex" aria-label="Breadcrumb">
+                "Navigation": {
+                    "Breadcrumbs": {
+                        "Simple": {
+                            "name": "Simple",
+                            "snippets": [
+                                {
+                                    "code": """<nav class="flex" aria-label="Breadcrumb">
   <ol role="list" class="flex items-center space-x-4">
     <li>
       <div>
@@ -63,9 +113,19 @@ def sample_data():
       </div>
     </li>
   </ol>
-</nav>"""
+</nav>""",
+                                    "language": "html",
+                                    "mode": null,
+                                    "name": "html",
+                                    "preview": "<nav>Breadcrumb preview</nav>",
+                                    "supportsDarkMode": false,
+                                    "version": 4
+                                }
+                            ]
+                        }
+                    }
                 }
-            },
+            }
         }
     }
 
