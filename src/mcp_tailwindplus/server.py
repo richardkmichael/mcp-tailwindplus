@@ -17,7 +17,11 @@ def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
         - Application UI components (forms, navigation, data display, overlays, etc.)
         - E-commerce components (product lists, shopping carts, checkout forms, etc.)
 
+        Components are available in multiple frameworks (HTML, React, Vue) and Tailwind CSS versions (3, 4).
         All components are production-ready and follow modern design patterns.
+        
+        IMPORTANT: Always specify both framework (html/react/vue) and tailwind_version (3/4) when retrieving components.
+        Use framework and version that match the user's project requirements.
         """,
     )
 
@@ -34,10 +38,21 @@ def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
 
     server.tool(
         tailwind_plus_instance.get_component_by_name,
-        description="Retrieve the HTML/CSS code for a specific TailwindPlus component by its dotted path name",
+        description="Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by framework and version",
         tags={"get", "components", "retrieve"},
         annotations={
             "title": "Get Component by Name",
+            "readOnlyHint": True,
+            "idempotentHint": True,
+        },
+    )
+
+    server.tool(
+        tailwind_plus_instance.get_component_preview_by_name,
+        description="Retrieve the preview HTML for a specific TailwindPlus component by framework and version",
+        tags={"get", "components", "preview"},
+        annotations={
+            "title": "Get Component Preview by Name",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
