@@ -124,7 +124,15 @@ class TailwindPlus:
         self,
         name: Annotated[
             str,
-            "The dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Input with label')",
+            "The dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
+        ],
+        framework: Annotated[
+            Framework,
+            "REQUIRED: Must match user's project framework (html/react/vue)",
+        ],
+        tailwind_version: Annotated[
+            TailwindVersion,
+            "REQUIRED: Use 4 for new projects, 3 only if user specifically needs legacy version",
         ],
     ) -> Component:
         """Retrieve a specific TailwindPlus component by its dotted path name.
@@ -132,12 +140,72 @@ class TailwindPlus:
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        if name in self._components_by_name:
-            return self._components_by_name[name]
+        key = (name, framework, tailwind_version)
+        
+        if key not in self._component_index:
+            # Component not found, generate suggestions
+            suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
+            raise ComponentNotFoundError(name, suggestions)
+        
+        snippet_data = self._component_index[key]
+        
+        # Extract name parts
+        # e.g., "Application UI.Forms.Input Groups.Label with leading icon" 
+        # -> short_name = "Label with leading icon"
+        name_parts = name.split(".")
+        short_name = name_parts[-1]
+        
+        # Extract snippet properties
+        code = snippet_data["code"]
+        language_str = snippet_data["language"]
+        mode_str = snippet_data["mode"]
+        supports_dark_mode = snippet_data["supportsDarkMode"]
+        
+        # Convert to enums
+        language = Language(language_str)
+        mode = Mode(mode_str) if mode_str else None
+        
+        return Component(
+            version=self.version,
+            name=name,
+            short_name=short_name,
+            code=code,
+            framework=framework,
+            language=language,
+            tailwind_version=tailwind_version,
+            mode=mode,
+            supportsDarkMode=supports_dark_mode
+        )
 
-        # Component not found, generate suggestions
-        suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
-        raise ComponentNotFoundError(name, suggestions)
+    def get_component_preview_by_name(
+        self,
+        name: Annotated[
+            str,
+            "The dotted path name of the component to retrieve preview for (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
+        ],
+        framework: Annotated[
+            Framework,
+            "REQUIRED: Must match user's project framework (html/react/vue)",
+        ],
+        tailwind_version: Annotated[
+            TailwindVersion,
+            "REQUIRED: Use 4 for new projects, 3 only if user specifically needs legacy version",
+        ],
+    ) -> str:
+        """Retrieve the preview HTML for a specific TailwindPlus component.
+
+        If the component is not found, raises ComponentNotFoundError with up to 5
+        suggested component names based on partial matches.
+        """
+        key = (name, framework, tailwind_version)
+        
+        if key not in self._component_index:
+            # Component not found, generate suggestions
+            suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
+            raise ComponentNotFoundError(name, suggestions)
+        
+        snippet_data = self._component_index[key]
+        return snippet_data["preview"]
 
     def search_component_names(
         self,
