@@ -59,11 +59,6 @@ class ComponentNotFoundError(Exception):
 
 class TailwindPlus:
     def __init__(self, data_source: str | TextIO):
-        # data_source is now required - no more fallback to hardcoded path
-
-        # Store the data source path for version extraction
-        self._data_source_path = data_source if isinstance(data_source, str) else None
-
         if isinstance(data_source, str):
             # It's a file path
             with open(data_source) as f:
@@ -72,61 +67,35 @@ class TailwindPlus:
             # It's a file-like object (StringIO, etc.)
             raw_data = json.load(data_source)
 
-        # Extract version from filename and flatten to components
-        self.version = self._extract_version()
-        self._components_by_name = self._flatten_to_components(raw_data)
+        # Extract version directly from JSON metadata
+        self.version = raw_data["version"]
+        
+        # Build component index for O(1) lookups
+        self._component_index = self._build_component_index(raw_data["tailwindplus"])
 
-    def _extract_version(self) -> str:
-        """Extract version from filename like 'tailwindplus-components-2025-06-10-221317.json'."""
-        if not self._data_source_path:
-            return "test"  # Default version for tests or StringIO usage
-
-        filename = os.path.basename(self._data_source_path)
-        # Extract the part between 'tailwindplus-components-' and '.json'
-        if filename.startswith("tailwindplus-components-") and filename.endswith(
-            ".json"
-        ):
-            return filename[len("tailwindplus-components-") : -len(".json")]
-
-        raise ValueError(f"Cannot determine version from filename: {filename}")
-
-    def _flatten_to_components(
-        self, obj: dict, prefix: str = ""
-    ) -> dict[str, Component]:
-        """Transform JSON tree to flat dict of Component objects in a single pass."""
-        components = {}
-
-        if isinstance(obj, dict):
+    def _build_component_index(self, tailwindplus_data: dict) -> dict[tuple[str, Framework, TailwindVersion], dict]:
+        """Build lookup index for O(1) component access."""
+        index = {}
+        
+        def traverse(obj: dict, path: list[str] = []):
             for key, value in obj.items():
-                current_path = ".".join([prefix, key]) if prefix else key
-
-                if isinstance(value, str):
-                    # This is a component (HTML string) - current_path is already the full path
-                    components[current_path] = Component(
-                        version=self.version,
-                        name=current_path,
-                        short_name=key,
-                        html=value,
-                    )
+                current_path = path + [key]
+                
+                if isinstance(value, dict) and "snippets" in value:
+                    # Found a component - index all its snippets
+                    component_name = ".".join(current_path)
+                    for snippet in value["snippets"]:
+                        framework = Framework(snippet["name"])  # html/react/vue
+                        version = TailwindVersion(snippet["version"])  # 3/4
+                        
+                        lookup_key = (component_name, framework, version)
+                        index[lookup_key] = snippet
                 elif isinstance(value, dict):
-                    # Check if this dict contains only string values (components)
-                    if all(isinstance(v, str) for v in value.values()):
-                        # All values are HTML strings, so each key is a component
-                        for comp_key, comp_html in value.items():
-                            comp_path = ".".join([current_path, comp_key])
-                            components[comp_path] = Component(
-                                version=self.version,
-                                name=comp_path,
-                                short_name=comp_key,
-                                html=comp_html,
-                            )
-                    else:
-                        # Mixed content, recurse deeper
-                        components.update(
-                            self._flatten_to_components(value, current_path)
-                        )
-
-        return components
+                    # Keep traversing
+                    traverse(value, current_path)
+        
+        traverse(tailwindplus_data)
+        return index
 
     def _suggestions_for_component_name(
         self, name: str, *, max_suggestions: int | None = None
@@ -134,9 +103,12 @@ class TailwindPlus:
         """Generate component name suggestions based on partial matches."""
         name_parts = [part.lower() for part in name.lower().split(".")]
 
+        # Extract unique component names from index keys
+        all_component_names = set(key[0] for key in self._component_index.keys())
+        
         suggestions = [
             comp_name
-            for comp_name in self._components_by_name.keys()
+            for comp_name in all_component_names
             if any(part in comp_name.lower() for part in name_parts)
         ]
 
@@ -144,7 +116,9 @@ class TailwindPlus:
 
     def list_component_names(self) -> list[str]:
         """Get a complete list of all available TailwindPlus component names."""
-        return list(self._components_by_name.keys())
+        # Extract unique component names from index keys
+        unique_names = set(key[0] for key in self._component_index.keys())
+        return sorted(list(unique_names))
 
     def get_component_by_name(
         self,
