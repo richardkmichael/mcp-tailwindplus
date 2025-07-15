@@ -1,7 +1,29 @@
 import json
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Annotated, TextIO
+
+
+class Framework(Enum):
+    HTML = "html"
+    REACT = "react"
+    VUE = "vue"
+
+
+class Language(Enum):
+    HTML = "html"
+    JSX = "jsx"
+
+
+class TailwindVersion(Enum):
+    V3 = 3
+    V4 = 4
+
+
+class Mode(Enum):
+    LIGHT = "light"
+    DARK = "dark"
 
 
 @dataclass
@@ -9,7 +31,12 @@ class Component:
     version: str
     name: str
     short_name: str
-    html: str
+    code: str
+    framework: str
+    language: str # jsx | html
+    tailwind: int # 3 | 4
+    mode: str # light | dark
+
 
 
 class ComponentNotFoundError(Exception):
