@@ -6,6 +6,10 @@
 - Manage Python and dependencies using `uv`, e.g. `uv add [package]`
 - When done editing code, use `uv run ruff format .` and `uv run check . --fix` to format and check
 
+# Project Notes
+
+- This project does not use FastMCP's decorating methods.
+
 # Resource and documentation to review
 
 - Model Context Protocol Specification: https://modelcontextprotocol.io/specification/latest
