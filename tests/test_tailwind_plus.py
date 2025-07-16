@@ -168,9 +168,9 @@ class TestTailwindPlus:
         assert "Application UI.Forms.Select Menus.Simple" in names
         assert "Application UI.Navigation.Breadcrumbs.Simple" in names
 
-    def test_get_component_by_name_exists(self, tailwind_plus_instance):
-        """Test getting an existing component by name."""
-        result = tailwind_plus_instance.get_component_by_name(
+    def test_get_component_by_full_name_exists(self, tailwind_plus_instance):
+        """Test getting an existing component by full name."""
+        result = tailwind_plus_instance.get_component_by_full_name(
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
             TailwindVersion.V4,
@@ -178,9 +178,10 @@ class TestTailwindPlus:
 
         assert isinstance(result, Component)
         assert (
-            result.name == "Application UI.Forms.Input Groups.Label with leading icon"
+            result.full_name
+            == "Application UI.Forms.Input Groups.Label with leading icon"
         )
-        assert result.short_name == "Label with leading icon"
+        assert result.name == "Label with leading icon"
         assert result.version == "test-2025-07-15"
         assert result.framework == Framework.HTML
         assert result.language == Language.HTML
@@ -190,10 +191,10 @@ class TestTailwindPlus:
         assert isinstance(result.code, str)
         assert "Email" in result.code
 
-    def test_get_component_by_name_not_exists(self, tailwind_plus_instance):
+    def test_get_component_by_full_name_not_exists(self, tailwind_plus_instance):
         """Test getting a non-existent component by name."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
-            tailwind_plus_instance.get_component_by_name(
+            tailwind_plus_instance.get_component_by_full_name(
                 "nonexistent.component", Framework.HTML, TailwindVersion.V4
             )
 
@@ -252,7 +253,7 @@ class TestErrorHandling:
     def test_component_not_found_error_raised(self, tailwind_plus_instance):
         """Test that ComponentNotFoundError is raised for non-existent components."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
-            tailwind_plus_instance.get_component_by_name(
+            tailwind_plus_instance.get_component_by_full_name(
                 "nonexistent.component", Framework.HTML, TailwindVersion.V4
             )
 
@@ -281,7 +282,7 @@ class TestErrorHandling:
     def test_suggestions_included_in_error(self, tailwind_plus_instance):
         """Test that suggestions are included in ComponentNotFoundError."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
-            tailwind_plus_instance.get_component_by_name(
+            tailwind_plus_instance.get_component_by_full_name(
                 "Application.Forms.Input", Framework.HTML, TailwindVersion.V4
             )
 
@@ -300,7 +301,7 @@ class TestErrorHandling:
     def test_suggestions_with_exact_partial_matches(self, tailwind_plus_instance):
         """Test suggestions work with exact partial component name matches."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
-            tailwind_plus_instance.get_component_by_name(
+            tailwind_plus_instance.get_component_by_full_name(
                 "Application UI.Forms.Wrong Name", Framework.HTML, TailwindVersion.V4
             )
 
@@ -313,7 +314,7 @@ class TestErrorHandling:
     def test_no_suggestions_for_completely_invalid_name(self, tailwind_plus_instance):
         """Test that completely invalid names don't get suggestions."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
-            tailwind_plus_instance.get_component_by_name(
+            tailwind_plus_instance.get_component_by_full_name(
                 "xyz.abc.def", Framework.HTML, TailwindVersion.V4
             )
 
@@ -322,9 +323,9 @@ class TestErrorHandling:
         assert len(error.suggestions) == 0
         assert "Did you mean" not in str(error)
 
-    def test_get_component_preview_by_name(self, tailwind_plus_instance):
+    def test_get_component_preview_by_full_name(self, tailwind_plus_instance):
         """Test getting component preview."""
-        preview = tailwind_plus_instance.get_component_preview_by_name(
+        preview = tailwind_plus_instance.get_component_preview_by_full_name(
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
             TailwindVersion.V4,
@@ -333,10 +334,12 @@ class TestErrorHandling:
         assert isinstance(preview, str)
         assert "Email input preview" in preview
 
-    def test_get_component_preview_by_name_not_exists(self, tailwind_plus_instance):
+    def test_get_component_preview_by_full_name_not_exists(
+        self, tailwind_plus_instance
+    ):
         """Test getting preview for non-existent component."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
-            tailwind_plus_instance.get_component_preview_by_name(
+            tailwind_plus_instance.get_component_preview_by_full_name(
                 "nonexistent.component", Framework.HTML, TailwindVersion.V4
             )
 
@@ -344,7 +347,7 @@ class TestErrorHandling:
 
     def test_get_component_react_variant(self, tailwind_plus_instance):
         """Test getting React variant of a component."""
-        result = tailwind_plus_instance.get_component_by_name(
+        result = tailwind_plus_instance.get_component_by_full_name(
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.REACT,
             TailwindVersion.V4,
@@ -354,7 +357,7 @@ class TestErrorHandling:
         assert result.language == Language.JSX
         assert (
             "Email input React preview"
-            in tailwind_plus_instance.get_component_preview_by_name(
+            in tailwind_plus_instance.get_component_preview_by_full_name(
                 "Application UI.Forms.Input Groups.Label with leading icon",
                 Framework.REACT,
                 TailwindVersion.V4,

@@ -28,8 +28,8 @@ class Mode(Enum):
 @dataclass
 class Component:
     version: str
+    full_name: str
     name: str
-    short_name: str
     code: str
     framework: Framework
     language: Language
@@ -123,11 +123,11 @@ class TailwindPlus:
         unique_names = {key[0] for key in self._component_index}
         return sorted(unique_names)
 
-    def get_component_by_name(
+    def get_component_by_full_name(
         self,
-        name: Annotated[
+        full_name: Annotated[
             str,
-            "The dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
+            "The full dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
         ],
         framework: Annotated[
             Framework,
@@ -138,25 +138,27 @@ class TailwindPlus:
             "REQUIRED: Use 4 for new projects, 3 only if user specifically needs legacy version",
         ],
     ) -> Component:
-        """Retrieve a specific TailwindPlus component by its dotted path name.
+        """Retrieve a specific TailwindPlus component by its full dotted path name.
 
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        key = (name, framework, tailwind_version)
+        key = (full_name, framework, tailwind_version)
 
         if key not in self._component_index:
             # Component not found, generate suggestions
-            suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
-            raise ComponentNotFoundError(name, suggestions)
+            suggestions = self._suggestions_for_component_name(
+                full_name, max_suggestions=5
+            )
+            raise ComponentNotFoundError(full_name, suggestions)
 
         snippet_data = self._component_index[key]
 
         # Extract name parts
-        # e.g., "Application UI.Forms.Input Groups.Label with leading icon"
-        # -> short_name = "Label with leading icon"
-        name_parts = name.split(".")
-        short_name = name_parts[-1]
+        # full_name: "Application UI.Forms.Input Groups.Label with leading icon" (dotted path)
+        # name: "Label with leading icon" (from JSON, the simple component name)
+        name_parts = full_name.split(".")
+        simple_name = name_parts[-1]
 
         # Extract snippet properties
         code = snippet_data["code"]
@@ -170,8 +172,8 @@ class TailwindPlus:
 
         return Component(
             version=self.version,
-            name=name,
-            short_name=short_name,
+            full_name=full_name,
+            name=simple_name,
             code=code,
             framework=framework,
             language=language,
@@ -180,11 +182,11 @@ class TailwindPlus:
             supportsDarkMode=supports_dark_mode,
         )
 
-    def get_component_preview_by_name(
+    def get_component_preview_by_full_name(
         self,
-        name: Annotated[
+        full_name: Annotated[
             str,
-            "The dotted path name of the component to retrieve preview for (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
+            "The full dotted path name of the component to retrieve preview for (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
         ],
         framework: Annotated[
             Framework,
@@ -200,12 +202,14 @@ class TailwindPlus:
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        key = (name, framework, tailwind_version)
+        key = (full_name, framework, tailwind_version)
 
         if key not in self._component_index:
             # Component not found, generate suggestions
-            suggestions = self._suggestions_for_component_name(name, max_suggestions=5)
-            raise ComponentNotFoundError(name, suggestions)
+            suggestions = self._suggestions_for_component_name(
+                full_name, max_suggestions=5
+            )
+            raise ComponentNotFoundError(full_name, suggestions)
 
         snippet_data = self._component_index[key]
         return snippet_data["preview"]

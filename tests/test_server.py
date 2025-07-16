@@ -32,9 +32,9 @@ def sample_mcp_data():
                                     "name": "html",
                                     "preview": "<div>Input with icon preview</div>",
                                     "supportsDarkMode": False,
-                                    "version": 4
+                                    "version": 4,
                                 }
-                            ]
+                            ],
                         }
                     },
                     "Select Menus": {
@@ -48,11 +48,11 @@ def sample_mcp_data():
                                     "name": "html",
                                     "preview": "<div>Basic select preview</div>",
                                     "supportsDarkMode": True,
-                                    "version": 4
+                                    "version": 4,
                                 }
-                            ]
+                            ],
                         }
-                    }
+                    },
                 },
                 "Navigation": {
                     "Breadcrumbs": {
@@ -66,12 +66,12 @@ def sample_mcp_data():
                                     "name": "html",
                                     "preview": "<nav>Simple breadcrumb preview</nav>",
                                     "supportsDarkMode": False,
-                                    "version": 4
+                                    "version": 4,
                                 }
-                            ]
+                            ],
                         }
                     }
-                }
+                },
             },
             "Marketing": {
                 "Hero Sections": {
@@ -85,13 +85,13 @@ def sample_mcp_data():
                                 "name": "html",
                                 "preview": "<section>Centered hero preview</section>",
                                 "supportsDarkMode": False,
-                                "version": 4
+                                "version": 4,
                             }
-                        ]
+                        ],
                     }
                 }
-            }
-        }
+            },
+        },
     }
 
 
@@ -130,15 +130,15 @@ class TestMCPServerFunctionality:
             assert sorted(component_names) == sorted(expected_names)
 
     @pytest.mark.asyncio
-    async def test_get_component_by_name_exists(self, mcp_server):
+    async def test_get_component_by_full_name_exists(self, mcp_server):
         """Test getting an existing component."""
         async with Client(mcp_server) as client:
             result = await client.call_tool(
-                "get_component_by_name",
+                "get_component_by_full_name",
                 {
-                    "name": "Application UI.Forms.Input Groups.With icon",
+                    "full_name": "Application UI.Forms.Input Groups.With icon",
                     "framework": "html",
-                    "tailwind_version": "4"
+                    "tailwind_version": "4",
                 },
             )
 
@@ -149,9 +149,10 @@ class TestMCPServerFunctionality:
             component_data = json.loads(result.content[0].text)
             assert isinstance(component_data, dict)
             assert (
-                component_data["name"] == "Application UI.Forms.Input Groups.With icon"
+                component_data["full_name"]
+                == "Application UI.Forms.Input Groups.With icon"
             )
-            assert component_data["short_name"] == "With icon"
+            assert component_data["name"] == "With icon"
             assert component_data["version"] == "test-server-2025-07-15"
             assert component_data["framework"] == "html"
             assert component_data["language"] == "html"
@@ -160,18 +161,18 @@ class TestMCPServerFunctionality:
             assert "form-input" in component_data["code"]
 
     @pytest.mark.asyncio
-    async def test_get_component_by_name_not_exists(self, mcp_server):
+    async def test_get_component_by_full_name_not_exists(self, mcp_server):
         """Test getting a non-existent component."""
         async with Client(mcp_server) as client:
             # Should raise ToolError for non-existent component (converted from ComponentNotFoundError)
             with pytest.raises(ToolError) as exc_info:
                 await client.call_tool(
-                    "get_component_by_name", 
+                    "get_component_by_full_name",
                     {
-                        "name": "nonexistent.component",
-                        "framework": "html", 
-                        "tailwind_version": "4"
-                    }
+                        "full_name": "nonexistent.component",
+                        "framework": "html",
+                        "tailwind_version": "4",
+                    },
                 )
 
             # Verify the error message contains helpful information
@@ -180,18 +181,18 @@ class TestMCPServerFunctionality:
             assert "not found" in error_message.lower()
 
     @pytest.mark.asyncio
-    async def test_get_component_by_name_with_suggestions(self, mcp_server):
+    async def test_get_component_by_full_name_with_suggestions(self, mcp_server):
         """Test that error includes suggestions for similar component names."""
         async with Client(mcp_server) as client:
             # Try a name that should generate suggestions
             with pytest.raises(ToolError) as exc_info:
                 await client.call_tool(
-                    "get_component_by_name", 
+                    "get_component_by_full_name",
                     {
-                        "name": "Application.Forms.Wrong",
+                        "full_name": "Application.Forms.Wrong",
                         "framework": "html",
-                        "tailwind_version": "4"
-                    }
+                        "tailwind_version": "4",
+                    },
                 )
 
             # Verify suggestions are included in the ToolError message
@@ -299,8 +300,8 @@ class TestMCPServerMetadata:
 
         expected_tools = [
             "list_component_names",
-            "get_component_by_name",
-            "get_component_preview_by_name",
+            "get_component_by_full_name",
+            "get_component_preview_by_full_name",
             "search_component_names",
         ]
 
@@ -324,10 +325,10 @@ class TestMCPServerMetadata:
         assert list_tool.annotations.idempotentHint is True
 
         # Test get tool
-        get_tool = tools["get_component_by_name"]
+        get_tool = tools["get_component_by_full_name"]
         assert (
             get_tool.description
-            == "Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by framework and version"
+            == "Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by full name, framework and version"
         )
         assert "get" in get_tool.tags
         assert "components" in get_tool.tags
@@ -358,17 +359,13 @@ class TestMCPServerIntegration:
             # Then try to get each component
             for name in all_names:
                 get_result = await client.call_tool(
-                    "get_component_by_name", 
-                    {
-                        "name": name,
-                        "framework": "html",
-                        "tailwind_version": "4"
-                    }
+                    "get_component_by_full_name",
+                    {"full_name": name, "framework": "html", "tailwind_version": "4"},
                 )
                 assert len(get_result.content) == 1
 
                 component_data = json.loads(get_result.content[0].text)
-                assert component_data["name"] == name
+                assert component_data["full_name"] == name
                 assert component_data["code"] != ""
 
     @pytest.mark.asyncio
@@ -386,20 +383,16 @@ class TestMCPServerIntegration:
             # Verify each search result can be retrieved
             for name in search_names:
                 get_result = await client.call_tool(
-                    "get_component_by_name", 
-                    {
-                        "name": name,
-                        "framework": "html",
-                        "tailwind_version": "4"
-                    }
+                    "get_component_by_full_name",
+                    {"full_name": name, "framework": "html", "tailwind_version": "4"},
                 )
                 assert len(get_result.content) == 1
 
                 component_data = json.loads(get_result.content[0].text)
-                assert component_data["name"] == name
+                assert component_data["full_name"] == name
 
                 # Verify component has expected structure
                 assert isinstance(component_data["code"], str)
                 assert len(component_data["code"]) > 0
                 assert component_data["version"] == "test-server-2025-07-15"
-                assert component_data["short_name"] is not None
+                assert component_data["name"] is not None

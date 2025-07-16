@@ -37,22 +37,22 @@ def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
     )
 
     server.tool(
-        tailwind_plus_instance.get_component_by_name,
-        description="Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by framework and version",
+        tailwind_plus_instance.get_component_by_full_name,
+        description="Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by full name, framework and version",
         tags={"get", "components", "retrieve"},
         annotations={
-            "title": "Get Component by Name",
+            "title": "Get Component by Full Name",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
     )
 
     server.tool(
-        tailwind_plus_instance.get_component_preview_by_name,
-        description="Retrieve the preview HTML for a specific TailwindPlus component by framework and version",
+        tailwind_plus_instance.get_component_preview_by_full_name,
+        description="Retrieve the preview HTML for a specific TailwindPlus component by full name, framework and version",
         tags={"get", "components", "preview"},
         annotations={
-            "title": "Get Component Preview by Name",
+            "title": "Get Component Preview by Full Name",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
