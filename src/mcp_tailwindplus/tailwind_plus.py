@@ -223,3 +223,47 @@ class TailwindPlus:
     ) -> list[str]:
         """Search for TailwindPlus component names by pattern or keyword."""
         return self._suggestions_for_component_name(search_term)
+
+    def get_component_as_resource(
+        self,
+        component_full_name: Annotated[
+            str,
+            "Dot-separated component path like 'Application UI.Forms.Input Groups.Label with leading icon'",
+        ],
+        framework: Annotated[
+            str,
+            "Framework name: html, react, or vue",
+        ],
+        version: Annotated[
+            str,
+            "Tailwind version: 3 or 4",
+        ],
+    ) -> Component:
+        """Get component code via resource path - adapter for get_component_by_full_name."""
+        framework_enum = Framework(framework)
+        version_enum = TailwindVersion(version)
+        return self.get_component_by_full_name(
+            component_full_name, framework_enum, version_enum
+        )
+
+    def get_component_preview_as_resource(
+        self,
+        component_full_name: Annotated[
+            str,
+            "Dot-separated component path like 'Application UI.Forms.Input Groups.Label with leading icon'",
+        ],
+        framework: Annotated[
+            str,
+            "Framework name: html, react, or vue",
+        ],
+        version: Annotated[
+            str,
+            "Tailwind version: 3 or 4",
+        ],
+    ) -> str:
+        """Get component preview via resource path - adapter for get_component_preview_by_full_name."""
+        framework_enum = Framework(framework)
+        version_enum = TailwindVersion(version)
+        return self.get_component_preview_by_full_name(
+            component_full_name, framework_enum, version_enum
+        )

@@ -69,4 +69,20 @@ def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
         },
     )
 
+    server.resource(
+        "twplus://{component_full_name}/{framework}/{version}",
+        name="TailwindPlus Component Code",
+        description="Get component code by full name, framework, and version",
+        mime_type="application/json",
+        tags={"resource", "component", "code"},
+    )(tailwind_plus_instance.get_component_as_resource)
+
+    server.resource(
+        "twplus://{component_full_name}/{framework}/{version}/preview",
+        name="TailwindPlus Component Preview",
+        description="Get component preview HTML by full name, framework, and version",
+        mime_type="text/html",
+        tags={"resource", "component", "preview"},
+    )(tailwind_plus_instance.get_component_preview_as_resource)
+
     return server

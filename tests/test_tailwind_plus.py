@@ -363,3 +363,95 @@ class TestErrorHandling:
                 TailwindVersion.V4,
             )
         )
+
+
+class TestResourceAdapterMethods:
+    """Test the resource adapter methods."""
+
+    def test_get_component_as_resource(self, tailwind_plus_instance):
+        """Test getting component via resource adapter method."""
+        component = tailwind_plus_instance.get_component_as_resource(
+            "Application UI.Forms.Input Groups.Label with leading icon", "html", "4"
+        )
+
+        assert isinstance(component, Component)
+        assert (
+            component.full_name
+            == "Application UI.Forms.Input Groups.Label with leading icon"
+        )
+        assert component.framework == Framework.HTML
+        assert component.tailwind_version == TailwindVersion.V4
+        assert "Email" in component.code
+
+    def test_get_component_as_resource_react(self, tailwind_plus_instance):
+        """Test getting React component via resource adapter method."""
+        component = tailwind_plus_instance.get_component_as_resource(
+            "Application UI.Forms.Input Groups.Label with leading icon", "react", "4"
+        )
+
+        assert component.framework == Framework.REACT
+        assert component.language == Language.JSX
+
+    def test_get_component_preview_as_resource(self, tailwind_plus_instance):
+        """Test getting component preview via resource adapter method."""
+        preview = tailwind_plus_instance.get_component_preview_as_resource(
+            "Application UI.Forms.Input Groups.Label with leading icon", "html", "4"
+        )
+
+        assert isinstance(preview, str)
+        assert "Email input preview" in preview
+
+    def test_get_component_as_resource_invalid_framework(self, tailwind_plus_instance):
+        """Test error handling for invalid framework."""
+        with pytest.raises(ValueError):
+            tailwind_plus_instance.get_component_as_resource(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                "invalidframework",
+                "4",
+            )
+
+    def test_get_component_as_resource_invalid_version(self, tailwind_plus_instance):
+        """Test error handling for invalid version."""
+        with pytest.raises(ValueError):
+            tailwind_plus_instance.get_component_as_resource(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                "html",
+                "99",
+            )
+
+    def test_get_component_as_resource_nonexistent_component(
+        self, tailwind_plus_instance
+    ):
+        """Test error handling for nonexistent component."""
+        with pytest.raises(ComponentNotFoundError):
+            tailwind_plus_instance.get_component_as_resource(
+                "Application UI.Forms.Nonexistent Component", "html", "4"
+            )
+
+    def test_get_component_preview_as_resource_nonexistent_component(
+        self, tailwind_plus_instance
+    ):
+        """Test error handling for nonexistent component preview."""
+        with pytest.raises(ComponentNotFoundError):
+            tailwind_plus_instance.get_component_preview_as_resource(
+                "Application UI.Forms.Nonexistent Component", "html", "4"
+            )
+
+    def test_direct_component_name_usage(self, tailwind_plus_instance):
+        """Test that resource adapter uses component names directly."""
+        # Resource adapter should accept dot-separated component names directly
+        component1 = tailwind_plus_instance.get_component_as_resource(
+            "Application UI.Forms.Input Groups.Label with leading icon", "html", "4"
+        )
+
+        # Compare with direct method call using dot notation
+        component2 = tailwind_plus_instance.get_component_by_full_name(
+            "Application UI.Forms.Input Groups.Label with leading icon",
+            Framework.HTML,
+            TailwindVersion.V4,
+        )
+
+        # Should be identical
+        assert component1.full_name == component2.full_name
+        assert component1.code == component2.code
+        assert component1.framework == component2.framework
