@@ -16,8 +16,8 @@ class Language(Enum):
 
 
 class TailwindVersion(Enum):
-    V3 = 3
-    V4 = 4
+    V3 = "3"
+    V4 = "4"
 
 
 class Mode(Enum):
@@ -88,7 +88,8 @@ class TailwindPlus:
                     component_name = ".".join(current_path)
                     for snippet in value["snippets"]:
                         framework = Framework(snippet["name"])  # html/react/vue
-                        version = TailwindVersion(snippet["version"])  # 3/4
+                        # Convert integer version from JSON to string enum
+                        version = TailwindVersion(str(snippet["version"]))  # "3"/"4"
 
                         lookup_key = (component_name, framework, version)
                         index[lookup_key] = snippet

@@ -138,7 +138,7 @@ class TestMCPServerFunctionality:
                 {
                     "name": "Application UI.Forms.Input Groups.With icon",
                     "framework": "html",
-                    "tailwind_version": 4
+                    "tailwind_version": "4"
                 },
             )
 
@@ -155,7 +155,7 @@ class TestMCPServerFunctionality:
             assert component_data["version"] == "test-server-2025-07-15"
             assert component_data["framework"] == "html"
             assert component_data["language"] == "html"
-            assert component_data["tailwind_version"] == 4
+            assert component_data["tailwind_version"] == "4"
             assert isinstance(component_data["code"], str)
             assert "form-input" in component_data["code"]
 
@@ -170,7 +170,7 @@ class TestMCPServerFunctionality:
                     {
                         "name": "nonexistent.component",
                         "framework": "html", 
-                        "tailwind_version": 4
+                        "tailwind_version": "4"
                     }
                 )
 
@@ -190,7 +190,7 @@ class TestMCPServerFunctionality:
                     {
                         "name": "Application.Forms.Wrong",
                         "framework": "html",
-                        "tailwind_version": 4
+                        "tailwind_version": "4"
                     }
                 )
 
@@ -362,7 +362,7 @@ class TestMCPServerIntegration:
                     {
                         "name": name,
                         "framework": "html",
-                        "tailwind_version": 4
+                        "tailwind_version": "4"
                     }
                 )
                 assert len(get_result.content) == 1
@@ -390,7 +390,7 @@ class TestMCPServerIntegration:
                     {
                         "name": name,
                         "framework": "html",
-                        "tailwind_version": 4
+                        "tailwind_version": "4"
                     }
                 )
                 assert len(get_result.content) == 1
