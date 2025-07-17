@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mcp-tailwindplus": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "mcp-tailwindplus"
+      ],
+      "env": {}
+    }
+  }
+}

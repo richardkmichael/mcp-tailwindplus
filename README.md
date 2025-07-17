@@ -172,6 +172,32 @@ uv run ruff format .
 uv run ruff check . --fix
 ```
 
+## Running an agent in development
+
+This project is configured with this MCP server in `.mcp.json`.
+
+Set `MCP_TAILWINDPLUS_DATA=/path/to/file.json` prior to running your agent.
+
+e.g.,
+
+```
+export MCP_TAILWINDPLUS_DATA=/path/to/data.json
+claude
+```
+
+The data file is not specified in the MCP settings (neither via CLI argument nor env) to provide
+flexibility in the local development environment.  Set the env to whatever is needed for development
+or testing, and start your agent.  A "short" (`--debug-short-test`) from the downloader is helpful.
+
+## Inspecting the server directly
+
+Use the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) web app to execute MCP
+commands interactively, review MCP schema for Tools and Resources, etc.:
+
+```
+MCP_TAILWINDPLUS_DATA=/path/to/data.json npx @modelcontextprotocol/inspector uv run mcp-tailwindplus
+```
+
 ## Data Source
 
 Requires a JSON file containing TailwindPlus component library data.  Obtain one using the
