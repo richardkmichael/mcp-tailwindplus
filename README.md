@@ -4,15 +4,25 @@ An MCP (Model Context Protocol) server that provides access to TailwindPlus UI c
 
 ## Quick Start
 
-Obtain a TailwindPlus components JSON file using the [TailwindPlus Downloader](https://github.com/richardkmichael/tailwindplus-downloader).
+1. Obtain a TailwindPlus components JSON file using the [TailwindPlus Downloader](https://github.com/richardkmichael/tailwindplus-downloader).
 
-Install and run via [`uvx`](https://docs.astral.sh/uv/getting-started/installation/), or see Development below:
+2. Install [`uvx`](https://docs.astral.sh/uv/getting-started/installation/), or see Development below:
 
-```bash
-uvx --from git+https://github.com/richardkmichael/mcp-tailwindplus@latest mcp-tailwindplus --tailwindplus-data /path/to/tailwindplus-components.json
+3. Add to Claude Code, with either local (default) or project scope:
+
+`claude mcp add mcp-tailwindplus [-s project] uvx -- --from git+ssh://git@github.com/richardkmichael/mcp-tailwindplus@latest mcp-tailwindplus --tailwindplus-data /path/to/tailwindplus-components.json`
+
+4. Store your TailwindPlus settings in Claude's memory. This teaches Claude to use the tool and resource filters properly.
+
+```claude
+# Use TailwindPlus react for TailwindCSS v4`
+  ⎿  Got it.
 ```
 
-To configure it in your MCP client:
+
+
+
+Or, to configure it in another MCP client:
 
 ```json
 {
@@ -29,6 +39,87 @@ To configure it in your MCP client:
     }
   }
 }
+```
+
+Finally, to run directly use:
+
+```bash
+uvx --from git+https://github.com/richardkmichael/mcp-tailwindplus@latest mcp-tailwindplus --tailwindplus-data /path/to/tailwindplus-components.json
+```
+
+
+## Example usage
+
+Ask for a piece of UI:
+
+```claude
+
+> I need a simple one-line search input to put in the app header.
+
+ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with leading icon", framework: "react", tailwind_version: "4")
+  ⎿  {
+       "version": "2025-07-14-204017",
+       "full_name": "Application UI.Forms.Input Groups.Input with leading icon",
+     … +15 lines (ctrl+r to expand)
+
+ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with keyboard shortcut", framework: "react", tailwind_version: "4")
+  ⎿  {
+       "version": "2025-07-14-204017",
+       "full_name": "Application UI.Forms.Input Groups.Input with keyboard shortcut",
+     … +16 lines (ctrl+r to expand)
+
+
+ Perfect! Here are two ideal options for a header search input:
+
+  1. Input with Leading Icon
+
+  Application UI.Forms.Input Groups.Input with leading icon
+  - Simple search input with magnifying glass icon
+  - Just swap the EnvelopeIcon for MagnifyingGlassIcon
+  - Clean, compact design perfect for headers
+
+  2. Input with Keyboard Shortcut
+
+  Application UI.Forms.Input Groups.Input with keyboard shortcut
+  - Shows "⌘K" shortcut hint
+  - Modern search UX that users expect
+  - Great for power users
+
+  For a header, I'd recommend the first one with a search icon - it's the most recognizable and space-efficient.
+```
+
+Claude appreciates other types of help too:
+
+```
+# Referring to "component" means TailwindPlus component.
+  ⎿  Got it.
+```
+
+Ask for code for a use-case, help with a sketch:
+
+```
+> Show me the code for an input component we can use for a URL with the schema, e.g., `https:// [INPUT]`
+
+⏺ I'll search for a TailwindPlus input component that would work well for URL input with a schema prefix.
+
+⏺ mcp-tailwindplus - Search Component Names (MCP)(search_term: "input")
+  ⎿  [
+       "Application UI.Forms.Input Groups.Input with leading icon",
+       "Application UI.Forms.Input Groups.Input with overlapping label",
+     … +22 lines (ctrl+r to expand)
+
+⏺ Perfect! Let me get the "Input with inline leading add-on" component, which would be ideal for showing a URL schema
+  prefix like "https://".
+
+⏺ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with inline add-on", framework: "react", tailwind_version: "4")
+  ⎿  {
+       "version": "2025-07-14-204017",
+       "full_name": "Application UI.Forms.Input Groups.Input with inline add-on",
+     … +15 lines (ctrl+r to expand)
+
+⏺ Here's a TailwindPlus React component for URL input with the "https://" schema prefix:
+
+   <Claude shows React code>
 ```
 
 ### Environment Variables
