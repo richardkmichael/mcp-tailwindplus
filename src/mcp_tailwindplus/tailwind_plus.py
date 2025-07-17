@@ -65,8 +65,12 @@ class TailwindPlus:
             # It's a file-like object (StringIO, etc.)
             raw_data = json.load(data_source)
 
-        # Extract version directly from JSON metadata
+        # Extract metadata directly from JSON
         self.version = raw_data["version"]
+        self.downloaded_at = raw_data["downloaded_at"]
+        self.component_count = raw_data["component_count"]
+        self.download_duration = raw_data["download_duration"]
+        self.downloader_version = raw_data["downloader_version"]
 
         # Build component index for O(1) lookups
         self._component_index = self._build_component_index(raw_data["tailwindplus"])
@@ -122,6 +126,16 @@ class TailwindPlus:
         # Extract unique component names from index keys
         unique_names = {key[0] for key in self._component_index}
         return sorted(unique_names)
+
+    def list_tailwindplus_information(self) -> dict[str, str | int]:
+        """Get TailwindPlus metadata information including version, download date, component count, etc."""
+        return {
+            "version": self.version,
+            "downloaded_at": self.downloaded_at,
+            "component_count": self.component_count,
+            "download_duration": self.download_duration,
+            "downloader_version": self.downloader_version,
+        }
 
     def get_component_by_full_name(
         self,

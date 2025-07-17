@@ -69,6 +69,17 @@ def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
         },
     )
 
+    server.tool(
+        tailwind_plus_instance.list_tailwindplus_information,
+        description="Get TailwindPlus metadata information including version, download date, component count, etc.",
+        tags={"info", "metadata", "version"},
+        annotations={
+            "title": "List TailwindPlus Information",
+            "readOnlyHint": True,
+            "idempotentHint": True,
+        },
+    )
+
     server.resource(
         "twplus://{component_full_name}/{framework}/{version}",
         name="TailwindPlus Component Code",

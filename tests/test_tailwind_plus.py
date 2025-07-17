@@ -246,6 +246,17 @@ class TestTailwindPlus:
 
         # tmp_path automatically cleans up
 
+    def test_list_tailwindplus_information(self, tailwind_plus_instance):
+        """Test that list_tailwindplus_information returns metadata correctly."""
+        info = tailwind_plus_instance.list_tailwindplus_information()
+
+        assert isinstance(info, dict)
+        assert info["version"] == "test-2025-07-15"
+        assert info["downloaded_at"] == "2025-07-15T00:00:00.000Z"
+        assert info["component_count"] == 3
+        assert info["download_duration"] == "1.0s"
+        assert info["downloader_version"] == "2.0.0"
+
 
 class TestErrorHandling:
     """Test error handling and suggestions functionality."""
