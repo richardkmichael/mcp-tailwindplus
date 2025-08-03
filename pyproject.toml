@@ -32,12 +32,6 @@ Issues = "https://github.com/richardkmichael/mcp-tailwindplus/issues"
 [project.scripts]
 mcp-tailwindplus = "mcp_tailwindplus:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-dir]
-"" = "src"
-
 # Development tool configuration
 [tool.ruff]
 target-version = "py313"
