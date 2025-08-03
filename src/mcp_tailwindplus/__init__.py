@@ -39,13 +39,8 @@ def main():
         parser.error(f"TailwindPlus data file not found: {data_file}")
 
     try:
-        # Create TailwindPlus instance with the data file
         tailwind_plus = TailwindPlus(data_file)
-
-        # Create the server
         mcp_server = create_server(tailwind_plus)
-
-        # Run the server
         mcp_server.run()
 
     except KeyboardInterrupt:
