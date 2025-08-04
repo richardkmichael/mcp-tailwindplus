@@ -1,12 +1,12 @@
-# MCP TailwindPlus Server
+# TailwindPlus MCP Server
 
-An MCP (Model Context Protocol) server that provides access to TailwindPlus UI components. Browse, search, and retrieve production-ready components in HTML, React, and Vue frameworks.
+An MCP (Model Context Protocol) server for TailwindPlus UI components.
 
 ## Quick Start
 
 1. Obtain a TailwindPlus components JSON file using the [TailwindPlus Downloader](https://github.com/richardkmichael/tailwindplus-downloader).
 
-2. Install [`uvx`](https://docs.astral.sh/uv/getting-started/installation/), or see Development below:
+2. Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for `uvx`.
 
 3. Add to Claude Code, with either local (default) or project scope:
 
@@ -15,12 +15,9 @@ An MCP (Model Context Protocol) server that provides access to TailwindPlus UI c
 4. Store your TailwindPlus settings in Claude's memory. This teaches Claude to use the tool and resource filters properly.
 
 ```claude
-# Use TailwindPlus react for TailwindCSS v4`
+# Use TailwindPlus react for TailwindCSS v4
   ⎿  Got it.
 ```
-
-
-
 
 Or, to configure it in another MCP client:
 
@@ -41,19 +38,31 @@ Or, to configure it in another MCP client:
 }
 ```
 
-Finally, to run directly use:
+Or, to run directly:
 
 ```bash
 uvx --from git+https://github.com/richardkmichael/mcp-tailwindplus@latest mcp-tailwindplus --tailwindplus-data /path/to/tailwindplus-components.json
 ```
 
+## Tips
+
+The TailwindPlus components JSON file has a __version__.
+
+To perform future markup maintenance easily, tell Claude to add the component __name__ and __version__ as a comment in source code.
+
+```javascript
+// Start: Application UI > Forms > Input Groups > Input with leading icon | v.2025-07-15-002529
+
+// code
+
+// End: Application UI > Forms > Input Groups > Input with leading icon | v.2025-07-15-002529
+```
 
 ## Example usage
 
-Ask for a piece of UI:
+Ask for UI:
 
 ```claude
-
 > I need a simple one-line search input to put in the app header.
 
  mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with leading icon", framework: "react", tailwind_version: "4")
@@ -174,7 +183,7 @@ uv run ruff check . --fix
 
 ## Running an agent in development
 
-This project is configured with this MCP server in `.mcp.json`.
+This project has an `.mcp.json` to run itself.
 
 Set `MCP_TAILWINDPLUS_DATA=/path/to/file.json` prior to running your agent.
 
@@ -186,12 +195,14 @@ claude
 ```
 
 The data file is not specified in the MCP settings (neither via CLI argument nor env) to provide
-flexibility in the local development environment.  Set the env to whatever is needed for development
-or testing, and start your agent.  A "short" (`--debug-short-test`) from the downloader is helpful.
+flexibility in the local development environment.
+
+Set the env to whatever is needed for development or testing.  A "short" (`--debug-short-test`) from
+the downloader is helpful.
 
 ## Inspecting the server directly
 
-Use the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) web app to execute MCP
+Use the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) to execute MCP
 commands interactively, review MCP schema for Tools and Resources, etc.:
 
 ```
@@ -200,8 +211,8 @@ MCP_TAILWINDPLUS_DATA=/path/to/data.json npx @modelcontextprotocol/inspector uv 
 
 ## Data Source
 
-Requires a JSON file containing TailwindPlus component library data.  Obtain one using the
-[TailwindPlus Downloader](https://github.com/richardkmichael/tailwindplus-downloader).
+Requires a TailwindPlus components JSON file.  Obtain one using the [TailwindPlus
+Downloader](https://github.com/richardkmichael/tailwindplus-downloader).
 
 Configure via:
 - Command line: `--tailwindplus-data /path/to/data.json`
