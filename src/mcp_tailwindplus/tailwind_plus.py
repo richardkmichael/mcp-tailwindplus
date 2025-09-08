@@ -121,12 +121,6 @@ class TailwindPlus:
 
         return suggestions if max_suggestions is None else suggestions[:max_suggestions]
 
-    def list_component_names(self) -> list[str]:
-        """Get a complete list of all available TailwindPlus component names."""
-        # Extract unique component names from index keys
-        unique_names = {key[0] for key in self._component_index}
-        return sorted(unique_names)
-
     def list_tailwindplus_information(self) -> dict[str, str | int]:
         """Get TailwindPlus metadata information including version, download date, component count, etc."""
         return {
@@ -136,6 +130,22 @@ class TailwindPlus:
             "download_duration": self.download_duration,
             "downloader_version": self.downloader_version,
         }
+
+    def list_component_names(self) -> list[str]:
+        """Get a complete list of all available TailwindPlus component names."""
+        # Extract unique component names from index keys
+        unique_names = {key[0] for key in self._component_index}
+        return sorted(unique_names)
+
+    def search_component_names(
+        self,
+        search_term: Annotated[
+            str,
+            "Search term to match against component names (case-insensitive, supports partial matches)",
+        ],
+    ) -> list[str]:
+        """Search for TailwindPlus component names by pattern or keyword."""
+        return self._suggestions_for_component_name(search_term)
 
     def get_component_by_full_name(
         self,
@@ -227,16 +237,6 @@ class TailwindPlus:
 
         snippet_data = self._component_index[key]
         return snippet_data["preview"]
-
-    def search_component_names(
-        self,
-        search_term: Annotated[
-            str,
-            "Search term to match against component names (case-insensitive, supports partial matches)",
-        ],
-    ) -> list[str]:
-        """Search for TailwindPlus component names by pattern or keyword."""
-        return self._suggestions_for_component_name(search_term)
 
     def get_component_as_resource(
         self,
