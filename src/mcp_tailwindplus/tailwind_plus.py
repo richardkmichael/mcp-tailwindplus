@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Annotated, TextIO
 
+from packaging.version import Version
+
 
 class Framework(Enum):
     HTML = "html"
@@ -103,6 +105,13 @@ class TailwindPlus:
         self.component_count = raw_data["component_count"]
         self.download_duration = raw_data["download_duration"]
         self.downloader_version = raw_data["downloader_version"]
+
+        # Validate downloader version requirement
+        if Version(self.downloader_version) < Version("3.0.0-rc1"):
+            raise ValueError(
+                f"TailwindPlus data requires downloader version >= 3.0.0-rc1 for mode support. "
+                f"Found version {self.downloader_version}. Please regenerate the data file with a newer downloader version."
+            )
 
         # Build component index for O(1) lookups
         self._component_index = self._build_component_index(raw_data["tailwindplus"])
