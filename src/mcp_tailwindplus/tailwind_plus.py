@@ -23,6 +23,15 @@ class TailwindVersion(Enum):
 class Mode(Enum):
     LIGHT = "light"
     DARK = "dark"
+    SYSTEM = "system"
+    NONE = "none"
+
+    @classmethod
+    def _missing_(cls, value):
+        # Handle Python None by mapping to Mode.NONE
+        if value is None:
+            return cls.NONE
+        return None
 
 
 @dataclass
@@ -34,8 +43,31 @@ class Component:
     framework: Framework
     language: Language
     tailwind_version: TailwindVersion
-    mode: Mode | None
+    mode: Mode
     supportsDarkMode: bool
+
+    @classmethod
+    def from_snippet(
+        cls, snippet_data: dict, version: str, full_name: str
+    ) -> "Component":
+        """Create Component from raw snippet data."""
+        name = full_name.split(".")[-1]
+        framework = Framework(snippet_data["name"])
+        language = Language(snippet_data["language"])
+        mode = Mode(snippet_data["mode"])
+        tailwind_version = TailwindVersion(str(snippet_data["version"]))
+
+        return cls(
+            version=version,
+            full_name=full_name,
+            name=name,
+            code=snippet_data["code"],
+            framework=framework,
+            language=language,
+            tailwind_version=tailwind_version,
+            mode=mode,
+            supportsDarkMode=snippet_data["supportsDarkMode"],
+        )
 
 
 class ComponentNotFoundError(Exception):
@@ -77,7 +109,7 @@ class TailwindPlus:
 
     def _build_component_index(
         self, tailwindplus_data: dict
-    ) -> dict[tuple[str, Framework, TailwindVersion], dict]:
+    ) -> dict[tuple[str, Framework, TailwindVersion, Mode], dict]:
         """Build lookup index for O(1) component access."""
         index = {}
 
@@ -92,10 +124,12 @@ class TailwindPlus:
                     component_name = ".".join(current_path)
                     for snippet in value["snippets"]:
                         framework = Framework(snippet["name"])  # html/react/vue
-                        # Convert integer version from JSON to string enum
-                        version = TailwindVersion(str(snippet["version"]))  # "3"/"4"
+                        version = TailwindVersion(
+                            str(snippet["version"])
+                        )  # "3"|"4", str for Enum
+                        mode = Mode(snippet["mode"])
 
-                        lookup_key = (component_name, framework, version)
+                        lookup_key = (component_name, framework, version, mode)
                         index[lookup_key] = snippet
                 elif isinstance(value, dict):
                     # Keep traversing
@@ -155,19 +189,39 @@ class TailwindPlus:
         ],
         framework: Annotated[
             Framework,
-            "REQUIRED: Must match user's project framework (html/react/vue)",
+            "REQUIRED: Target framework - 'html', 'react', or 'vue'",
         ],
         tailwind_version: Annotated[
             TailwindVersion,
-            "REQUIRED: Use 4 for new projects, 3 only if user specifically needs legacy version",
+            "REQUIRED: Tailwind CSS version - use '4' for new projects, '3' for legacy compatibility",
+        ],
+        mode: Annotated[
+            Mode,
+            "REQUIRED: Theme mode - use 'light', 'dark', or 'system' for Application UI/Marketing components; use 'none' for eCommerce components",
         ],
     ) -> Component:
         """Retrieve a specific TailwindPlus component by its full dotted path name.
 
+        Validates that the mode parameter matches the component type:
+        - Application UI and Marketing components require mode 'light', 'dark', or 'system'
+        - eCommerce components require mode 'none'
+
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        key = (full_name, framework, tailwind_version)
+        # Validate mode matches component type
+        if full_name.startswith("Ecommerce"):
+            if mode != Mode.NONE:
+                raise ValueError(
+                    f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
+                )
+        else:
+            if mode == Mode.NONE:
+                raise ValueError(
+                    f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+                )
+
+        key = (full_name, framework, tailwind_version, mode)
 
         if key not in self._component_index:
             # Component not found, generate suggestions
@@ -178,33 +232,7 @@ class TailwindPlus:
 
         snippet_data = self._component_index[key]
 
-        # Extract name parts
-        # full_name: "Application UI.Forms.Input Groups.Label with leading icon" (dotted path)
-        # name: "Label with leading icon" (from JSON, the simple component name)
-        name_parts = full_name.split(".")
-        simple_name = name_parts[-1]
-
-        # Extract snippet properties
-        code = snippet_data["code"]
-        language_str = snippet_data["language"]
-        mode_str = snippet_data["mode"]
-        supports_dark_mode = snippet_data["supportsDarkMode"]
-
-        # Convert to enums
-        language = Language(language_str)
-        mode = Mode(mode_str) if mode_str else None
-
-        return Component(
-            version=self.version,
-            full_name=full_name,
-            name=simple_name,
-            code=code,
-            framework=framework,
-            language=language,
-            tailwind_version=tailwind_version,
-            mode=mode,
-            supportsDarkMode=supports_dark_mode,
-        )
+        return Component.from_snippet(snippet_data, self.version, full_name)
 
     def get_component_preview_by_full_name(
         self,
@@ -214,19 +242,40 @@ class TailwindPlus:
         ],
         framework: Annotated[
             Framework,
-            "REQUIRED: Must match user's project framework (html/react/vue)",
+            "REQUIRED: Target framework - 'html', 'react', or 'vue'",
         ],
         tailwind_version: Annotated[
             TailwindVersion,
-            "REQUIRED: Use 4 for new projects, 3 only if user specifically needs legacy version",
+            "REQUIRED: Tailwind CSS version - use '4' for new projects, '3' for legacy compatibility",
+        ],
+        mode: Annotated[
+            Mode,
+            "REQUIRED: Theme mode - use 'light', 'dark', or 'system' for Application UI/Marketing components; use 'none' for eCommerce components",
         ],
     ) -> str:
         """Retrieve the preview HTML for a specific TailwindPlus component.
 
+        Validates that the mode parameter matches the component type:
+        - Application UI and Marketing components require mode 'light', 'dark', or 'system'
+        - eCommerce components require mode 'none'
+
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        key = (full_name, framework, tailwind_version)
+        # Validate mode matches component type
+        if full_name.startswith("Ecommerce"):
+            if mode != Mode.NONE:
+                raise ValueError(
+                    f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
+                )
+        else:
+            # Application UI components must NOT use Mode.NONE
+            if mode == Mode.NONE:
+                raise ValueError(
+                    f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+                )
+
+        key = (full_name, framework, tailwind_version, mode)
 
         if key not in self._component_index:
             # Component not found, generate suggestions
@@ -242,42 +291,85 @@ class TailwindPlus:
         self,
         component_full_name: Annotated[
             str,
-            "Dot-separated component path like 'Application UI.Forms.Input Groups.Label with leading icon'",
+            "The full dotted path name of the component (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
         ],
         framework: Annotated[
             str,
-            "Framework name: html, react, or vue",
+            "Target framework - 'html', 'react', or 'vue'",
         ],
         version: Annotated[
             str,
-            "Tailwind version: 3 or 4",
+            "Tailwind CSS version - '3' or '4'",
+        ],
+        mode: Annotated[
+            str,
+            "REQUIRED: Theme mode - use 'light', 'dark', or 'system' for Application UI/Marketing components; use 'none' for eCommerce components",
         ],
     ) -> Component:
-        """Get component code via resource path - adapter for get_component_by_full_name."""
+        """Get component code via resource path - adapter for get_component_by_full_name.
+
+        Validates that the mode parameter matches the component type before retrieving the component.
+        """
         framework_enum = Framework(framework)
         version_enum = TailwindVersion(version)
+        # Convert string mode to enum, handling "none" -> None conversion
+        mode_enum = Mode(mode)
+
+        # Validate mode matches component type (same as main method)
+        if component_full_name.startswith("Ecommerce"):
+            if mode_enum != Mode.NONE:
+                raise ValueError(
+                    f"eCommerce component '{component_full_name}' must use mode='none'. Got mode='{mode}'. eCommerce components only support mode='none'."
+                )
+        else:
+            if mode_enum == Mode.NONE:
+                raise ValueError(
+                    f"Component '{component_full_name}' cannot use mode='none'. Got mode='{mode}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+                )
+
         return self.get_component_by_full_name(
-            component_full_name, framework_enum, version_enum
+            component_full_name, framework_enum, version_enum, mode_enum
         )
 
     def get_component_preview_as_resource(
         self,
         component_full_name: Annotated[
             str,
-            "Dot-separated component path like 'Application UI.Forms.Input Groups.Label with leading icon'",
+            "The full dotted path name of the component (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
         ],
         framework: Annotated[
             str,
-            "Framework name: html, react, or vue",
+            "Target framework - 'html', 'react', or 'vue'",
         ],
         version: Annotated[
             str,
-            "Tailwind version: 3 or 4",
+            "Tailwind CSS version - '3' or '4'",
+        ],
+        mode: Annotated[
+            str,
+            "REQUIRED: Theme mode - use 'light', 'dark', or 'system' for Application UI/Marketing components; use 'none' for eCommerce components",
         ],
     ) -> str:
-        """Get component preview via resource path - adapter for get_component_preview_by_full_name."""
+        """Get component preview HTML via resource path - adapter for get_component_preview_by_full_name.
+
+        Validates that the mode parameter matches the component type before retrieving the preview.
+        """
         framework_enum = Framework(framework)
         version_enum = TailwindVersion(version)
+        mode_enum = Mode(mode)
+
+        # Validate mode matches component type (same as main method)
+        if component_full_name.startswith("Ecommerce"):
+            if mode_enum != Mode.NONE:
+                raise ValueError(
+                    f"eCommerce component '{component_full_name}' must use mode='none'. Got mode='{mode}'. eCommerce components only support mode='none'."
+                )
+        else:
+            if mode_enum == Mode.NONE:
+                raise ValueError(
+                    f"Component '{component_full_name}' cannot use mode='none'. Got mode='{mode}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+                )
+
         return self.get_component_preview_by_full_name(
-            component_full_name, framework_enum, version_enum
+            component_full_name, framework_enum, version_enum, mode_enum
         )

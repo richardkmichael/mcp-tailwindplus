@@ -62,12 +62,30 @@ def sample_mcp_data():
                                 {
                                     "code": '<nav aria-label="Breadcrumb"></nav>',
                                     "language": "html",
-                                    "mode": None,
+                                    "mode": "light",
                                     "name": "html",
                                     "preview": "<nav>Simple breadcrumb preview</nav>",
-                                    "supportsDarkMode": False,
+                                    "supportsDarkMode": True,
                                     "version": 4,
-                                }
+                                },
+                                {
+                                    "code": '<nav aria-label="Breadcrumb" class="dark"></nav>',
+                                    "language": "html",
+                                    "mode": "dark",
+                                    "name": "html",
+                                    "preview": "<nav>Simple breadcrumb preview</nav>",
+                                    "supportsDarkMode": True,
+                                    "version": 4,
+                                },
+                                {
+                                    "code": '<nav aria-label="Breadcrumb" class="system"></nav>',
+                                    "language": "html",
+                                    "mode": "system",
+                                    "name": "html",
+                                    "preview": "<nav>Simple breadcrumb preview</nav>",
+                                    "supportsDarkMode": True,
+                                    "version": 4,
+                                },
                             ],
                         }
                     }
@@ -139,6 +157,7 @@ class TestMCPServerFunctionality:
                     "full_name": "Application UI.Forms.Input Groups.With icon",
                     "framework": "html",
                     "tailwind_version": "4",
+                    "mode": "light",
                 },
             )
 
@@ -172,6 +191,7 @@ class TestMCPServerFunctionality:
                         "full_name": "nonexistent.component",
                         "framework": "html",
                         "tailwind_version": "4",
+                        "mode": "light",
                     },
                 )
 
@@ -192,6 +212,7 @@ class TestMCPServerFunctionality:
                         "full_name": "Application.Forms.Wrong",
                         "framework": "html",
                         "tailwind_version": "4",
+                        "mode": "light",
                     },
                 )
 
@@ -328,7 +349,7 @@ class TestMCPServerMetadata:
         get_tool = tools["get_component_by_full_name"]
         assert (
             get_tool.description
-            == "Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by full name, framework and version"
+            == "Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by full name, framework, version, and mode"
         )
         assert "get" in get_tool.tags
         assert "components" in get_tool.tags
@@ -360,7 +381,12 @@ class TestMCPServerIntegration:
             for name in all_names:
                 get_result = await client.call_tool(
                     "get_component_by_full_name",
-                    {"full_name": name, "framework": "html", "tailwind_version": "4"},
+                    {
+                        "full_name": name,
+                        "framework": "html",
+                        "tailwind_version": "4",
+                        "mode": "none" if name.startswith("Ecommerce") else "light",
+                    },
                 )
                 assert len(get_result.content) == 1
 
@@ -384,7 +410,12 @@ class TestMCPServerIntegration:
             for name in search_names:
                 get_result = await client.call_tool(
                     "get_component_by_full_name",
-                    {"full_name": name, "framework": "html", "tailwind_version": "4"},
+                    {
+                        "full_name": name,
+                        "framework": "html",
+                        "tailwind_version": "4",
+                        "mode": "none" if name.startswith("Ecommerce") else "light",
+                    },
                 )
                 assert len(get_result.content) == 1
 
