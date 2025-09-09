@@ -5,6 +5,7 @@
 - The project is managed using a `pyproject.toml` project file
 - Python and dependencies are managed using `uv`, e.g. `uv add [package]`
 - When done editing code, use `uv run ruff format .` and `uv run check . --fix` to format and check
+- To run tests use: `uv run pytest`
 
 # Project notes
 
