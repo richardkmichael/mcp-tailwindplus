@@ -20,7 +20,7 @@ def sample_data():
     return {
         "version": "test-2025-07-15",
         "downloaded_at": "2025-07-15T00:00:00.000Z",
-        "component_count": 3,
+        "component_count": 4,
         "download_duration": "1.0s",
         "downloader_version": "2.0.0",
         "tailwindplus": {
@@ -129,7 +129,43 @@ def sample_data():
                         }
                     }
                 },
-            }
+            },
+            "Ecommerce": {
+                "Product Lists": {
+                    "Simple": {
+                        "name": "Simple",
+                        "snippets": [
+                            {
+                                "code": """<div class="bg-white">
+  <div class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24 lg:max-w-7xl lg:px-8">
+    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Customers also purchased</h2>
+    <div class="mt-6 grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4 xl:gap-x-8">
+      <div class="group relative">
+        <div class="aspect-h-1 aspect-w-1 w-full overflow-hidden rounded-md bg-gray-200 lg:aspect-none group-hover:opacity-75 lg:h-80">
+          <img src="#" alt="Product" class="h-full w-full object-cover object-center lg:h-full lg:w-full">
+        </div>
+        <div class="mt-4 flex justify-between">
+          <div>
+            <h3 class="text-sm text-gray-700">Basic Tee</h3>
+            <p class="mt-1 text-sm text-gray-500">Black</p>
+          </div>
+          <p class="text-sm font-medium text-gray-900">$35</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>""",
+                                "language": "html",
+                                "mode": None,
+                                "name": "html",
+                                "preview": "<div>Product list preview</div>",
+                                "supportsDarkMode": False,
+                                "version": 4,
+                            }
+                        ],
+                    }
+                }
+            },
         },
     }
 
@@ -153,6 +189,7 @@ class TestTailwindPlus:
             "Application UI.Forms.Input Groups.Label with leading icon",
             "Application UI.Forms.Select Menus.Simple",
             "Application UI.Navigation.Breadcrumbs.Simple",
+            "Ecommerce.Product Lists.Simple",
         ]
 
         paths = tailwind_plus_instance.list_component_names()
@@ -163,10 +200,11 @@ class TestTailwindPlus:
         names = tailwind_plus_instance.list_component_names()
 
         assert isinstance(names, list)
-        assert len(names) == 3
+        assert len(names) == 4
         assert "Application UI.Forms.Input Groups.Label with leading icon" in names
         assert "Application UI.Forms.Select Menus.Simple" in names
         assert "Application UI.Navigation.Breadcrumbs.Simple" in names
+        assert "Ecommerce.Product Lists.Simple" in names
 
     def test_get_component_by_full_name_exists(self, tailwind_plus_instance):
         """Test getting an existing component by full name."""
@@ -174,6 +212,7 @@ class TestTailwindPlus:
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
             TailwindVersion.V4,
+            Mode.LIGHT,
         )
 
         assert isinstance(result, Component)
@@ -195,7 +234,7 @@ class TestTailwindPlus:
         """Test getting a non-existent component by name."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_full_name(
-                "nonexistent.component", Framework.HTML, TailwindVersion.V4
+                "nonexistent.component", Framework.HTML, TailwindVersion.V4, Mode.LIGHT
             )
 
         assert exc_info.value.component_name == "nonexistent.component"
@@ -241,6 +280,7 @@ class TestTailwindPlus:
             "Application UI.Forms.Input Groups.Label with leading icon",
             "Application UI.Forms.Select Menus.Simple",
             "Application UI.Navigation.Breadcrumbs.Simple",
+            "Ecommerce.Product Lists.Simple",
         ]
         assert all(name in component_names for name in expected_names)
 
@@ -253,7 +293,7 @@ class TestTailwindPlus:
         assert isinstance(info, dict)
         assert info["version"] == "test-2025-07-15"
         assert info["downloaded_at"] == "2025-07-15T00:00:00.000Z"
-        assert info["component_count"] == 3
+        assert info["component_count"] == 4
         assert info["download_duration"] == "1.0s"
         assert info["downloader_version"] == "2.0.0"
 
@@ -265,7 +305,7 @@ class TestErrorHandling:
         """Test that ComponentNotFoundError is raised for non-existent components."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_full_name(
-                "nonexistent.component", Framework.HTML, TailwindVersion.V4
+                "nonexistent.component", Framework.HTML, TailwindVersion.V4, Mode.LIGHT
             )
 
         assert exc_info.value.component_name == "nonexistent.component"
@@ -294,7 +334,10 @@ class TestErrorHandling:
         """Test that suggestions are included in ComponentNotFoundError."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_full_name(
-                "Application.Forms.Input", Framework.HTML, TailwindVersion.V4
+                "Application.Forms.Input",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.LIGHT,
             )
 
         error = exc_info.value
@@ -313,7 +356,10 @@ class TestErrorHandling:
         """Test suggestions work with exact partial component name matches."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_full_name(
-                "Application UI.Forms.Wrong Name", Framework.HTML, TailwindVersion.V4
+                "Application UI.Forms.Wrong Name",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.LIGHT,
             )
 
         error = exc_info.value
@@ -326,7 +372,7 @@ class TestErrorHandling:
         """Test that completely invalid names don't get suggestions."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_by_full_name(
-                "xyz.abc.def", Framework.HTML, TailwindVersion.V4
+                "xyz.abc.def", Framework.HTML, TailwindVersion.V4, Mode.LIGHT
             )
 
         error = exc_info.value
@@ -340,6 +386,7 @@ class TestErrorHandling:
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
             TailwindVersion.V4,
+            Mode.LIGHT,
         )
 
         assert isinstance(preview, str)
@@ -351,7 +398,7 @@ class TestErrorHandling:
         """Test getting preview for non-existent component."""
         with pytest.raises(ComponentNotFoundError) as exc_info:
             tailwind_plus_instance.get_component_preview_by_full_name(
-                "nonexistent.component", Framework.HTML, TailwindVersion.V4
+                "nonexistent.component", Framework.HTML, TailwindVersion.V4, Mode.LIGHT
             )
 
         assert exc_info.value.component_name == "nonexistent.component"
@@ -362,6 +409,7 @@ class TestErrorHandling:
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.REACT,
             TailwindVersion.V4,
+            Mode.LIGHT,
         )
 
         assert result.framework == Framework.REACT
@@ -372,6 +420,7 @@ class TestErrorHandling:
                 "Application UI.Forms.Input Groups.Label with leading icon",
                 Framework.REACT,
                 TailwindVersion.V4,
+                Mode.LIGHT,
             )
         )
 
@@ -382,7 +431,10 @@ class TestResourceAdapterMethods:
     def test_get_component_as_resource(self, tailwind_plus_instance):
         """Test getting component via resource adapter method."""
         component = tailwind_plus_instance.get_component_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon", "html", "4"
+            "Application UI.Forms.Input Groups.Label with leading icon",
+            "html",
+            "4",
+            "light",
         )
 
         assert isinstance(component, Component)
@@ -397,7 +449,10 @@ class TestResourceAdapterMethods:
     def test_get_component_as_resource_react(self, tailwind_plus_instance):
         """Test getting React component via resource adapter method."""
         component = tailwind_plus_instance.get_component_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon", "react", "4"
+            "Application UI.Forms.Input Groups.Label with leading icon",
+            "react",
+            "4",
+            "light",
         )
 
         assert component.framework == Framework.REACT
@@ -406,7 +461,10 @@ class TestResourceAdapterMethods:
     def test_get_component_preview_as_resource(self, tailwind_plus_instance):
         """Test getting component preview via resource adapter method."""
         preview = tailwind_plus_instance.get_component_preview_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon", "html", "4"
+            "Application UI.Forms.Input Groups.Label with leading icon",
+            "html",
+            "4",
+            "light",
         )
 
         assert isinstance(preview, str)
@@ -419,6 +477,7 @@ class TestResourceAdapterMethods:
                 "Application UI.Forms.Input Groups.Label with leading icon",
                 "invalidframework",
                 "4",
+                "light",
             )
 
     def test_get_component_as_resource_invalid_version(self, tailwind_plus_instance):
@@ -428,6 +487,7 @@ class TestResourceAdapterMethods:
                 "Application UI.Forms.Input Groups.Label with leading icon",
                 "html",
                 "99",
+                "light",
             )
 
     def test_get_component_as_resource_nonexistent_component(
@@ -436,7 +496,7 @@ class TestResourceAdapterMethods:
         """Test error handling for nonexistent component."""
         with pytest.raises(ComponentNotFoundError):
             tailwind_plus_instance.get_component_as_resource(
-                "Application UI.Forms.Nonexistent Component", "html", "4"
+                "Application UI.Forms.Nonexistent Component", "html", "4", "light"
             )
 
     def test_get_component_preview_as_resource_nonexistent_component(
@@ -445,14 +505,17 @@ class TestResourceAdapterMethods:
         """Test error handling for nonexistent component preview."""
         with pytest.raises(ComponentNotFoundError):
             tailwind_plus_instance.get_component_preview_as_resource(
-                "Application UI.Forms.Nonexistent Component", "html", "4"
+                "Application UI.Forms.Nonexistent Component", "html", "4", "light"
             )
 
     def test_direct_component_name_usage(self, tailwind_plus_instance):
         """Test that resource adapter uses component names directly."""
         # Resource adapter should accept dot-separated component names directly
         component1 = tailwind_plus_instance.get_component_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon", "html", "4"
+            "Application UI.Forms.Input Groups.Label with leading icon",
+            "html",
+            "4",
+            "light",
         )
 
         # Compare with direct method call using dot notation
@@ -460,9 +523,337 @@ class TestResourceAdapterMethods:
             "Application UI.Forms.Input Groups.Label with leading icon",
             Framework.HTML,
             TailwindVersion.V4,
+            Mode.LIGHT,
         )
 
         # Should be identical
         assert component1.full_name == component2.full_name
         assert component1.code == component2.code
         assert component1.framework == component2.framework
+
+
+class TestModeValidation:
+    """Test mode validation logic for eCommerce vs non-eCommerce components."""
+
+    def test_ecommerce_component_with_valid_mode(self, tailwind_plus_instance):
+        """Test that eCommerce components work with Mode.NONE."""
+        component = tailwind_plus_instance.get_component_by_full_name(
+            "Ecommerce.Product Lists.Simple",
+            Framework.HTML,
+            TailwindVersion.V4,
+            Mode.NONE,
+        )
+
+        assert component.mode == Mode.NONE
+        assert component.full_name == "Ecommerce.Product Lists.Simple"
+        assert (
+            "Product list preview"
+            in tailwind_plus_instance.get_component_preview_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.NONE,
+            )
+        )
+
+    def test_ecommerce_component_with_invalid_mode_light(self, tailwind_plus_instance):
+        """Test that eCommerce components reject Mode.LIGHT."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.LIGHT,
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='light'" in error_msg
+        assert "eCommerce components only support mode='none'" in error_msg
+
+    def test_ecommerce_component_with_invalid_mode_dark(self, tailwind_plus_instance):
+        """Test that eCommerce components reject Mode.DARK."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.DARK,
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='dark'" in error_msg
+        assert "eCommerce components only support mode='none'" in error_msg
+
+    def test_ecommerce_component_with_invalid_mode_system(self, tailwind_plus_instance):
+        """Test that eCommerce components reject Mode.SYSTEM."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.SYSTEM,
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='system'" in error_msg
+        assert "eCommerce components only support mode='none'" in error_msg
+
+    def test_non_ecommerce_component_with_invalid_mode(self, tailwind_plus_instance):
+        """Test that non-eCommerce components reject Mode.NONE."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.NONE,
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='none'" in error_msg
+        assert (
+            "Application UI and Marketing components support modes: 'light', 'dark', 'system'"
+            in error_msg
+        )
+
+    def test_ecommerce_preview_with_invalid_mode(self, tailwind_plus_instance):
+        """Test that eCommerce preview components reject non-NONE modes."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_preview_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.LIGHT,
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='light'" in error_msg
+        assert "eCommerce components only support mode='none'" in error_msg
+
+    def test_non_ecommerce_preview_with_invalid_mode(self, tailwind_plus_instance):
+        """Test that non-eCommerce preview components reject Mode.NONE."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_preview_by_full_name(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.NONE,
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='none'" in error_msg
+        assert (
+            "Application UI and Marketing components support modes: 'light', 'dark', 'system'"
+            in error_msg
+        )
+
+    def test_ecommerce_resource_with_invalid_mode(self, tailwind_plus_instance):
+        """Test that eCommerce resource adapter rejects invalid modes."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_as_resource(
+                "Ecommerce.Product Lists.Simple",
+                "html",
+                "4",
+                "light",
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='light'" in error_msg
+        assert "eCommerce components only support mode='none'" in error_msg
+
+    def test_non_ecommerce_resource_with_invalid_mode(self, tailwind_plus_instance):
+        """Test that non-eCommerce resource adapter rejects Mode.NONE."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_as_resource(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                "html",
+                "4",
+                "none",
+            )
+
+        error_msg = str(exc_info.value)
+        assert (
+            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
+            in error_msg
+        )
+        assert "Got mode='none'" in error_msg
+        assert (
+            "Application UI and Marketing components support modes: 'light', 'dark', 'system'"
+            in error_msg
+        )
+
+
+class TestErrorMessageConsistency:
+    """Test that error messages are consistent across different methods and client-friendly."""
+
+    def test_error_message_format_contains_client_friendly_strings(
+        self, tailwind_plus_instance
+    ):
+        """Test that error messages contain client-friendly 'mode=' format."""
+        with pytest.raises(ValueError) as exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.LIGHT,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "mode='none'" in error_msg
+        assert "mode='light'" in error_msg
+        assert "Mode.NONE" not in error_msg  # Should not contain enum representation
+
+    def test_preview_and_main_method_consistent_error_messages(
+        self, tailwind_plus_instance
+    ):
+        """Test that preview and main methods have consistent error messages."""
+        # Test main method
+        with pytest.raises(ValueError) as main_exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.SYSTEM,
+            )
+
+        # Test preview method
+        with pytest.raises(ValueError) as preview_exc_info:
+            tailwind_plus_instance.get_component_preview_by_full_name(
+                "Ecommerce.Product Lists.Simple",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.SYSTEM,
+            )
+
+        main_error = str(main_exc_info.value)
+        preview_error = str(preview_exc_info.value)
+
+        # Both should have the same format
+        # Both should have the same format with improved error messages
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in main_error
+        )
+        assert "Got mode='system'" in main_error
+        assert "eCommerce components only support mode='none'" in main_error
+
+        assert (
+            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
+            in preview_error
+        )
+        assert "Got mode='system'" in preview_error
+        assert "eCommerce components only support mode='none'" in preview_error
+
+    def test_resource_and_main_method_consistent_error_messages(
+        self, tailwind_plus_instance
+    ):
+        """Test that resource and main methods have consistent error message format."""
+        # Test main method
+        with pytest.raises(ValueError) as main_exc_info:
+            tailwind_plus_instance.get_component_by_full_name(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.NONE,
+            )
+
+        # Test resource method
+        with pytest.raises(ValueError) as resource_exc_info:
+            tailwind_plus_instance.get_component_as_resource(
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                "html",
+                "4",
+                "none",
+            )
+
+        main_error = str(main_exc_info.value)
+        resource_error = str(resource_exc_info.value)
+
+        # Both should contain client-friendly format
+        assert "mode='none'" in main_error
+        assert "mode='none'" in resource_error
+
+        # Both should contain similar structure (allowing for parameter naming differences)
+        assert (
+            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
+            in main_error
+        )
+        assert (
+            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
+            in resource_error
+        )
+
+    def test_all_validation_paths_use_client_friendly_format(
+        self, tailwind_plus_instance
+    ):
+        """Test that all validation error paths use client-friendly mode format."""
+        test_cases = [
+            # (method, component_name, args, expected_mode_in_error)
+            (
+                "get_component_by_full_name",
+                "Ecommerce.Product Lists.Simple",
+                (Framework.HTML, TailwindVersion.V4, Mode.DARK),
+                "dark",
+            ),
+            (
+                "get_component_preview_by_full_name",
+                "Ecommerce.Product Lists.Simple",
+                (Framework.HTML, TailwindVersion.V4, Mode.LIGHT),
+                "light",
+            ),
+            (
+                "get_component_as_resource",
+                "Ecommerce.Product Lists.Simple",
+                ("html", "4", "system"),
+                "system",
+            ),
+            (
+                "get_component_preview_as_resource",
+                "Ecommerce.Product Lists.Simple",
+                ("html", "4", "dark"),
+                "dark",
+            ),
+        ]
+
+        for method_name, component_name, args, expected_mode in test_cases:
+            method = getattr(tailwind_plus_instance, method_name)
+
+            with pytest.raises(ValueError) as exc_info:
+                method(component_name, *args)
+
+            error_msg = str(exc_info.value)
+
+            # All should use client-friendly format
+            assert "mode='none'" in error_msg
+            assert f"mode='{expected_mode}'" in error_msg
+            assert "Mode.NONE" not in error_msg  # No enum representation
+            assert "Mode.LIGHT" not in error_msg
+            assert "Mode.DARK" not in error_msg
+            assert "Mode.SYSTEM" not in error_msg
