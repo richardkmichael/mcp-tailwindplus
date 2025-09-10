@@ -470,8 +470,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", specifier = ">=2.12.2" },
-    { name = "packaging", specifier = ">=25.0" },
+    { name = "fastmcp", specifier = "==2.12.2" },
+    { name = "packaging", specifier = "==25.0" },
 ]
 
 [package.metadata.requires-dev]
