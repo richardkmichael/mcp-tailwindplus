@@ -8,18 +8,28 @@ An MCP (Model Context Protocol) server for TailwindPlus UI components.
 
 2. Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for `uvx`.
 
-3. Add to Claude Code, with either local (default) or project scope:
+3. Add to Claude Code:
 
-`claude mcp add mcp-tailwindplus [-s project] uvx -- --from git+ssh://git@github.com/richardkmichael/mcp-tailwindplus@latest mcp-tailwindplus --tailwindplus-data /path/to/tailwindplus-components.json`
+`claude mcp add tailwindplus uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest --tailwindplus-data /path/to/tailwindplus-components.json`
 
 4. Store your TailwindPlus settings in Claude's memory. This teaches Claude to use the tool and resource filters properly.
+
+### Shared config (team)
+
+Add with project scope and set env `MCP_TAILWINDPLUS_DATA=/path/to/tailwindplus-components.json`:
+
+`claude mcp add tailwindplus -s project uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest`
+
+This will allow `.mcp.json` to be commited to the repository, and but different component files can be used if necessary.
 
 ```claude
 # Use TailwindPlus react for TailwindCSS v4
   ⎿  Got it.
 ```
 
-Or, to configure it in another MCP client:
+## Other clients
+
+To configure it in another MCP client:
 
 ```json
 {
@@ -27,9 +37,7 @@ Or, to configure it in another MCP client:
     "mcp-tailwindplus": {
       "command": "uvx",
       "args": [
-        "--from",
         "git+https://github.com/richardkmichael/mcp-tailwindplus@latest",
-        "mcp-tailwindplus",
         "--tailwindplus-data",
         "/path/to/tailwindplus-components.json"
       ]
@@ -41,7 +49,7 @@ Or, to configure it in another MCP client:
 Or, to run directly:
 
 ```bash
-uvx --from git+https://github.com/richardkmichael/mcp-tailwindplus@latest mcp-tailwindplus --tailwindplus-data /path/to/tailwindplus-components.json
+uvx git+https://github.com/richardkmichael/mcp-tailwindplus@latest --tailwindplus-data /path/to/tailwindplus-components.json
 ```
 
 ## Tips
