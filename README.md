@@ -18,7 +18,7 @@ An MCP (Model Context Protocol) server for TailwindPlus UI components.
 
 Add with project scope and set env `MCP_TAILWINDPLUS_DATA=/path/to/tailwindplus-components.json`:
 
-`claude mcp add tailwindplus -s project uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest`
+`claude mcp add -s project tailwindplus uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest`
 
 This will allow `.mcp.json` to be commited to the repository, and but different component files can be used if necessary.
 
@@ -189,17 +189,15 @@ uv run ruff format .
 uv run ruff check . --fix
 ```
 
-## Running an agent in development
+## Running in this project
 
-This project has an `.mcp.json` to run itself.
-
-Set `MCP_TAILWINDPLUS_DATA=/path/to/file.json` prior to running your agent.
+This project is configured to use itself, see: `.mcp.json`.
 
 e.g.,
 
 ```
 export MCP_TAILWINDPLUS_DATA=/path/to/data.json
-claude
+claude mcp list
 ```
 
 The data file is not specified in the MCP settings (neither via CLI argument nor env) to provide
@@ -207,6 +205,32 @@ flexibility in the local development environment.
 
 Set the env to whatever is needed for development or testing.  A "short" (`--debug-short-test`) from
 the downloader is helpful.
+
+## Running a development version in another project
+
+To test a development version of this MCP in another project, add to the other project's `.mcp.json`:
+
+`claude mcp add -s project tailwindplus -- uv --directory $( readlink -fn path/to/mcp-tailwindplus/development ) run mcp-tailwindplus`
+
+Resulting in `.mcp.json` similar to:
+
+```json
+{
+  "mcpServers": {
+    "tailwindplus": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/mcp-tailwindplus/development",
+        "run",
+        "mcp-tailwindplus"
+      ],
+      "env": {}
+    }
+  }
+}
+```
 
 ## Inspecting the server directly
 
