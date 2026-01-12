@@ -22,7 +22,7 @@ def sample_data():
         "downloaded_at": "2025-07-15T00:00:00.000Z",
         "component_count": 4,
         "download_duration": "1.0s",
-        "downloader_version": "2.0.0",
+        "downloader_version": "3.0.0",
         "tailwindplus": {
             "Application UI": {
                 "Forms": {
@@ -295,7 +295,7 @@ class TestTailwindPlus:
         assert info["downloaded_at"] == "2025-07-15T00:00:00.000Z"
         assert info["component_count"] == 4
         assert info["download_duration"] == "1.0s"
-        assert info["downloader_version"] == "2.0.0"
+        assert info["downloader_version"] == "3.0.0"
 
 
 class TestErrorHandling:

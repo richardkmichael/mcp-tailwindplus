@@ -17,7 +17,7 @@ def sample_mcp_data():
         "downloaded_at": "2025-07-15T00:00:00.000Z",
         "component_count": 4,
         "download_duration": "1.0s",
-        "downloader_version": "2.0.0",
+        "downloader_version": "3.0.0",
         "tailwindplus": {
             "Application UI": {
                 "Forms": {
