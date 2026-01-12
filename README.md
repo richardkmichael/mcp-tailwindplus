@@ -34,7 +34,7 @@ To configure it in another MCP client:
 ```json
 {
   "mcpServers": {
-    "mcp-tailwindplus": {
+    "tailwindplus": {
       "command": "uvx",
       "args": [
         "git+https://github.com/richardkmichael/mcp-tailwindplus@latest",

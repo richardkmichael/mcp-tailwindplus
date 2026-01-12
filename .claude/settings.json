@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv:*)"
+      "Bash(uv:*)",
+      "mcp__tailwindplus"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "tailwindplus"
+  ]
 }
