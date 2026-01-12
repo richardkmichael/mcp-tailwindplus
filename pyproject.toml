@@ -21,7 +21,7 @@ classifiers = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp==2.12.2",
+    "fastmcp==2.14.3",
     "packaging==25.0",
 ]
 
