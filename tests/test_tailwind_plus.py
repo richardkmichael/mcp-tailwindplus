@@ -1,5 +1,4 @@
 import json
-from io import StringIO
 
 import pytest
 
@@ -171,10 +170,17 @@ def sample_data():
 
 
 @pytest.fixture
-def tailwind_plus_instance(sample_data):
-    """Create a TailwindPlus instance with test data using StringIO."""
-    test_data_io = StringIO(json.dumps(sample_data))
-    return TailwindPlus(test_data_io)
+def data_file(sample_data, tmp_path):
+    """Write sample data to a temp file and return its path."""
+    path = tmp_path / "test-data.json"
+    path.write_text(json.dumps(sample_data))
+    return str(path)
+
+
+@pytest.fixture
+def tailwind_plus_instance(data_file):
+    """Create a TailwindPlus instance from the temp data file."""
+    return TailwindPlus(data_file)
 
 
 class TestTailwindPlus:
@@ -266,15 +272,12 @@ class TestTailwindPlus:
 
     def test_explicit_data_file_path(self, sample_data, tmp_path):
         """Test that TailwindPlus loads data from explicitly provided file path."""
-        # Use pytest's tmp_path fixture to create a proper temporary file
         test_file = tmp_path / "tailwindplus-components-test.json"
 
         with open(test_file, "w") as f:
             json.dump(sample_data, f)
 
-        # Create instance with explicit file path
         instance = TailwindPlus(str(test_file))
-        # Test that components were loaded correctly
         component_names = instance.list_component_names()
         expected_names = [
             "Application UI.Forms.Input Groups.Label with leading icon",
@@ -283,8 +286,6 @@ class TestTailwindPlus:
             "Ecommerce.Product Lists.Simple",
         ]
         assert all(name in component_names for name in expected_names)
-
-        # tmp_path automatically cleans up
 
     def test_list_tailwindplus_information(self, tailwind_plus_instance):
         """Test that list_tailwindplus_information returns metadata correctly."""
@@ -296,6 +297,81 @@ class TestTailwindPlus:
         assert info["component_count"] == 4
         assert info["download_duration"] == "1.0s"
         assert info["downloader_version"] == "3.0.0"
+
+
+class TestSQLiteCache:
+    """Test SQLite cache creation, reuse, and rebuild."""
+
+    def test_cache_file_is_created(self, data_file):
+        """Test that a cache DB file is created on first instantiation."""
+        cache_path = TailwindPlus._get_cache_path(data_file)
+        # Cache shouldn't exist yet (tmp_path is fresh)
+        import os
+
+        assert not os.path.exists(cache_path)
+
+        TailwindPlus(data_file)
+
+        assert os.path.exists(cache_path)
+
+    def test_cache_is_reused(self, data_file):
+        """Test that second instantiation reuses the cache (no re-parse)."""
+        import os
+
+        # First instantiation builds the cache
+        TailwindPlus(data_file)
+        cache_path = TailwindPlus._get_cache_path(data_file)
+        first_mtime = os.stat(cache_path).st_mtime
+
+        # Second instantiation should reuse
+        instance2 = TailwindPlus(data_file)
+        second_mtime = os.stat(cache_path).st_mtime
+
+        assert first_mtime == second_mtime
+        assert instance2.version == "test-2025-07-15"
+        assert len(instance2.list_component_names()) == 4
+
+    def test_cache_rebuilds_on_data_change(self, sample_data, data_file):
+        """Test that modified data file triggers cache rebuild."""
+        import os
+        import time
+
+        # First instantiation builds the cache
+        TailwindPlus(data_file)
+        cache_path = TailwindPlus._get_cache_path(data_file)
+        first_mtime = os.stat(cache_path).st_mtime
+
+        # Modify the data file (change version)
+        time.sleep(0.05)  # Ensure filesystem mtime changes
+        sample_data["version"] = "test-2025-07-16-updated"
+        with open(data_file, "w") as f:
+            json.dump(sample_data, f)
+
+        # Second instantiation should rebuild cache
+        instance2 = TailwindPlus(data_file)
+        second_mtime = os.stat(cache_path).st_mtime
+
+        assert second_mtime > first_mtime
+        assert instance2.version == "test-2025-07-16-updated"
+
+    def test_cache_staleness_detects_size_change(self, sample_data, data_file):
+        """Test that cache detects file size changes."""
+        TailwindPlus(data_file)
+        cache_path = TailwindPlus._get_cache_path(data_file)
+
+        # The cache should not be stale
+        assert not TailwindPlus._cache_is_stale(cache_path, data_file)
+
+        # Write different-sized content (add extra whitespace to change size)
+        with open(data_file, "w") as f:
+            json.dump(sample_data, f, indent=4)
+
+        # Now cache should be stale due to size change
+        assert TailwindPlus._cache_is_stale(cache_path, data_file)
+
+    def test_missing_cache_is_stale(self, data_file):
+        """Test that a non-existent cache path is considered stale."""
+        assert TailwindPlus._cache_is_stale("/nonexistent/path.db", data_file)
 
 
 class TestErrorHandling:

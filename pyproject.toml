@@ -23,6 +23,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastmcp==2.14.3",
     "packaging==25.0",
+    "platformdirs>=4.5.1",
 ]
 
 [project.urls]

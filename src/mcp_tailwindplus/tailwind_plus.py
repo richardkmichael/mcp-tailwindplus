@@ -1,9 +1,13 @@
+import hashlib
 import json
+import os
+import sqlite3
 from dataclasses import dataclass
 from enum import Enum
-from typing import Annotated, TextIO
+from typing import Annotated
 
 from packaging.version import Version
+from platformdirs import user_cache_dir
 
 
 class Framework(Enum):
@@ -54,10 +58,10 @@ class Component:
     ) -> "Component":
         """Create Component from raw snippet data."""
         name = full_name.split(".")[-1]
-        framework = Framework(snippet_data["name"])
+        framework = Framework(snippet_data["framework"])
         language = Language(snippet_data["language"])
         mode = Mode(snippet_data["mode"])
-        tailwind_version = TailwindVersion(str(snippet_data["version"]))
+        tailwind_version = TailwindVersion(str(snippet_data["tailwind_version"]))
 
         return cls(
             version=version,
@@ -68,7 +72,7 @@ class Component:
             language=language,
             tailwind_version=tailwind_version,
             mode=mode,
-            supportsDarkMode=snippet_data["supportsDarkMode"],
+            supportsDarkMode=bool(snippet_data["supports_dark_mode"]),
         )
 
 
@@ -90,37 +94,127 @@ class ComponentNotFoundError(Exception):
 
 
 class TailwindPlus:
-    def __init__(self, data_source: str | TextIO):
-        if isinstance(data_source, str):
-            # It's a file path
-            with open(data_source) as f:
-                raw_data = json.load(f)
-        else:
-            # It's a file-like object (StringIO, etc.)
-            raw_data = json.load(data_source)
+    def __init__(self, data_file: str):
+        self._data_file = data_file
+        cache_path = self._get_cache_path(data_file)
 
-        # Extract metadata directly from JSON
+        if self._cache_is_stale(cache_path, data_file):
+            self._build_cache(data_file, cache_path)
+        else:
+            self._db = sqlite3.connect(cache_path)
+            self._db.row_factory = sqlite3.Row
+            self._load_metadata_from_db()
+
+        self._component_names = self._load_component_names()
+
+    def close(self) -> None:
+        """Close the SQLite database connection."""
+        if hasattr(self, "_db") and self._db:
+            self._db.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    @staticmethod
+    def _get_cache_path(file_path: str) -> str:
+        """Compute the SQLite cache path for a given data file."""
+        abs_path = os.path.abspath(file_path)
+        path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:16]
+        cache_dir = user_cache_dir("mcp-tailwindplus")
+        return os.path.join(cache_dir, f"tailwindplus_components_cache_{path_hash}.db")
+
+    @staticmethod
+    def _cache_is_stale(cache_path: str, data_file: str) -> bool:
+        """Check if the cache needs to be rebuilt."""
+        if not os.path.exists(cache_path):
+            return True
+
+        db = None
+        try:
+            db = sqlite3.connect(cache_path)
+            db.row_factory = sqlite3.Row
+            row = db.execute(
+                "SELECT value FROM metadata WHERE key = 'source_mtime'"
+            ).fetchone()
+            if row is None:
+                return True
+            stored_mtime = float(row["value"])
+
+            row = db.execute(
+                "SELECT value FROM metadata WHERE key = 'source_size'"
+            ).fetchone()
+            if row is None:
+                return True
+            stored_size = int(row["value"])
+
+            stat = os.stat(data_file)
+            return stat.st_mtime != stored_mtime or stat.st_size != stored_size
+        except (sqlite3.DatabaseError, OSError):
+            return True
+        finally:
+            if db is not None:
+                db.close()
+
+    def _build_cache(self, data_file: str, cache_path: str) -> None:
+        """Parse JSON and build the SQLite cache."""
+        with open(data_file) as f:
+            raw_data = json.load(f)
+
+        # Extract and validate metadata
         self.version = raw_data["version"]
         self.downloaded_at = raw_data["downloaded_at"]
         self.component_count = raw_data["component_count"]
         self.download_duration = raw_data["download_duration"]
         self.downloader_version = raw_data["downloader_version"]
 
-        # Validate downloader version requirement
         if Version(self.downloader_version) < Version("3.0.0-rc1"):
             raise ValueError(
                 f"TailwindPlus data requires downloader version >= 3.0.0-rc1 for mode support. "
                 f"Found version {self.downloader_version}. Please regenerate the data file with a newer downloader version."
             )
 
-        # Build component index for O(1) lookups
-        self._component_index = self._build_component_index(raw_data["tailwindplus"])
+        # Create cache directory
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 
-    def _build_component_index(
-        self, tailwindplus_data: dict
-    ) -> dict[tuple[str, Framework, TailwindVersion, Mode], dict]:
-        """Build lookup index for O(1) component access."""
-        index = {}
+        # Create/overwrite the SQLite DB
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+
+        self._db = sqlite3.connect(cache_path)
+        self._db.row_factory = sqlite3.Row
+        self._create_tables()
+        self._populate_db(raw_data["tailwindplus"])
+        self._store_metadata(data_file)
+        self._db.commit()
+
+    def _create_tables(self) -> None:
+        """Create the SQLite tables."""
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+            """
+        )
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snippets (
+                full_name TEXT NOT NULL,
+                framework TEXT NOT NULL,
+                tailwind_version TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                language TEXT NOT NULL,
+                code TEXT NOT NULL,
+                preview TEXT NOT NULL,
+                supports_dark_mode INTEGER NOT NULL,
+                PRIMARY KEY (full_name, framework, tailwind_version, mode)
+            )
+            """
+        )
+
+    def _populate_db(self, tailwindplus_data: dict) -> None:
+        """Traverse the JSON tree and insert snippets into the DB."""
 
         def traverse(obj: dict, path: list[str] | None = None):
             if path is None:
@@ -129,23 +223,86 @@ class TailwindPlus:
                 current_path = path + [key]
 
                 if isinstance(value, dict) and "snippets" in value:
-                    # Found a component - index all its snippets
                     component_name = ".".join(current_path)
                     for snippet in value["snippets"]:
-                        framework = Framework(snippet["name"])  # html/react/vue
-                        version = TailwindVersion(
-                            str(snippet["version"])
-                        )  # "3"|"4", str for Enum
-                        mode = Mode(snippet["mode"])
+                        framework = snippet["name"]  # html/react/vue
+                        tailwind_version = str(snippet["version"])  # "3" or "4"
+                        mode = snippet["mode"]
+                        if mode is None:
+                            mode = "none"
 
-                        lookup_key = (component_name, framework, version, mode)
-                        index[lookup_key] = snippet
+                        self._db.execute(
+                            """
+                            INSERT INTO snippets
+                                (full_name, framework, tailwind_version, mode,
+                                 language, code, preview, supports_dark_mode)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                component_name,
+                                framework,
+                                tailwind_version,
+                                mode,
+                                snippet["language"],
+                                snippet["code"],
+                                snippet["preview"],
+                                1 if snippet["supportsDarkMode"] else 0,
+                            ),
+                        )
                 elif isinstance(value, dict):
-                    # Keep traversing
                     traverse(value, current_path)
 
         traverse(tailwindplus_data)
-        return index
+
+    def _store_metadata(self, data_file: str) -> None:
+        """Store metadata in the DB including source file stats for staleness checks."""
+        stat = os.stat(data_file)
+        metadata = {
+            "source_file": os.path.abspath(data_file),
+            "source_mtime": str(stat.st_mtime),
+            "source_size": str(stat.st_size),
+            "version": self.version,
+            "downloaded_at": self.downloaded_at,
+            "component_count": str(self.component_count),
+            "download_duration": self.download_duration,
+            "downloader_version": self.downloader_version,
+        }
+        for key, value in metadata.items():
+            self._db.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+
+    def _load_metadata_from_db(self) -> None:
+        """Load metadata from the DB into instance attributes."""
+        rows = self._db.execute("SELECT key, value FROM metadata").fetchall()
+        meta = {row["key"]: row["value"] for row in rows}
+        self.version = meta["version"]
+        self.downloaded_at = meta["downloaded_at"]
+        self.component_count = int(meta["component_count"])
+        self.download_duration = meta["download_duration"]
+        self.downloader_version = meta["downloader_version"]
+
+    def _load_component_names(self) -> set[str]:
+        """Load distinct component names from the DB."""
+        rows = self._db.execute("SELECT DISTINCT full_name FROM snippets").fetchall()
+        return {row["full_name"] for row in rows}
+
+    def _get_snippet(
+        self,
+        full_name: str,
+        framework: Framework,
+        tailwind_version: TailwindVersion,
+        mode: Mode,
+    ) -> dict | None:
+        """Retrieve a single snippet from the DB."""
+        mode_val = "none" if mode == Mode.NONE else mode.value
+        row = self._db.execute(
+            "SELECT * FROM snippets WHERE full_name=? AND framework=? "
+            "AND tailwind_version=? AND mode=?",
+            (full_name, framework.value, tailwind_version.value, mode_val),
+        ).fetchone()
+        return dict(row) if row else None
 
     def _suggestions_for_component_name(
         self, name: str, *, max_suggestions: int | None = None
@@ -153,12 +310,9 @@ class TailwindPlus:
         """Generate component name suggestions based on partial matches."""
         name_parts = [part.lower() for part in name.lower().split(".")]
 
-        # Extract unique component names from index keys
-        all_component_names = {key[0] for key in self._component_index}
-
         suggestions = [
             comp_name
-            for comp_name in all_component_names
+            for comp_name in self._component_names
             if any(part in comp_name.lower() for part in name_parts)
         ]
 
@@ -176,9 +330,7 @@ class TailwindPlus:
 
     def list_component_names(self) -> list[str]:
         """Get a complete list of all available TailwindPlus component names."""
-        # Extract unique component names from index keys
-        unique_names = {key[0] for key in self._component_index}
-        return sorted(unique_names)
+        return sorted(self._component_names)
 
     def search_component_names(
         self,
@@ -230,18 +382,15 @@ class TailwindPlus:
                     f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
                 )
 
-        key = (full_name, framework, tailwind_version, mode)
+        snippet = self._get_snippet(full_name, framework, tailwind_version, mode)
 
-        if key not in self._component_index:
-            # Component not found, generate suggestions
+        if snippet is None:
             suggestions = self._suggestions_for_component_name(
                 full_name, max_suggestions=5
             )
             raise ComponentNotFoundError(full_name, suggestions)
 
-        snippet_data = self._component_index[key]
-
-        return Component.from_snippet(snippet_data, self.version, full_name)
+        return Component.from_snippet(snippet, self.version, full_name)
 
     def get_component_preview_by_full_name(
         self,
@@ -284,17 +433,15 @@ class TailwindPlus:
                     f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
                 )
 
-        key = (full_name, framework, tailwind_version, mode)
+        snippet = self._get_snippet(full_name, framework, tailwind_version, mode)
 
-        if key not in self._component_index:
-            # Component not found, generate suggestions
+        if snippet is None:
             suggestions = self._suggestions_for_component_name(
                 full_name, max_suggestions=5
             )
             raise ComponentNotFoundError(full_name, suggestions)
 
-        snippet_data = self._component_index[key]
-        return snippet_data["preview"]
+        return snippet["preview"]
 
     def get_component_as_resource(
         self,

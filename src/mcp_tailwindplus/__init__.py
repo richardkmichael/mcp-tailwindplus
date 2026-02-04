@@ -1,6 +1,7 @@
 """MCP TailwindPlus - FastMCP server for browsing TailwindPlus components."""
 
 import argparse
+import glob
 import os
 import sys
 
@@ -21,8 +22,17 @@ def main():
         metavar="PATH",
         help="Path to TailwindPlus components JSON data file",
     )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Remove all cached component databases and exit",
+    )
 
     args = parser.parse_args()
+
+    if args.clear_cache:
+        _clear_cache()
+        sys.exit(0)
 
     # Determine data file path: command line > environment > error
     data_file = args.tailwindplus_data or os.environ.get("MCP_TAILWINDPLUS_DATA")
@@ -49,6 +59,25 @@ def main():
     except Exception as e:
         print(f"Error starting server: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def _clear_cache():
+    """Remove all cached component databases."""
+    from platformdirs import user_cache_dir
+
+    cache_dir = user_cache_dir("mcp-tailwindplus")
+    pattern = os.path.join(cache_dir, "tailwindplus_components_cache_*.db")
+    files = glob.glob(pattern)
+
+    if not files:
+        print(f"No cache files found in {cache_dir}")
+        return
+
+    for f in files:
+        os.remove(f)
+        print(f"Removed: {f}")
+
+    print(f"\nCleared {len(files)} cache file(s)")
 
 
 __all__ = ["__version__", "create_server", "TailwindPlus", "main"]

@@ -1,5 +1,4 @@
 import json
-from io import StringIO
 
 import pytest
 from fastmcp import Client
@@ -114,11 +113,17 @@ def sample_mcp_data():
 
 
 @pytest.fixture
-def mcp_server(sample_mcp_data):
-    """Create server with test data using factory function."""
-    test_data_io = StringIO(json.dumps(sample_mcp_data))
-    test_tailwind_plus = TailwindPlus(test_data_io)
+def data_file(sample_mcp_data, tmp_path):
+    """Write sample MCP data to a temp file and return its path."""
+    path = tmp_path / "test-server-data.json"
+    path.write_text(json.dumps(sample_mcp_data))
+    return str(path)
 
+
+@pytest.fixture
+def mcp_server(data_file):
+    """Create server with test data from temp file."""
+    test_tailwind_plus = TailwindPlus(data_file)
     return create_server(test_tailwind_plus)
 
 

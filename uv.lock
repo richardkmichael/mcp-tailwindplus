@@ -623,6 +623,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
     { name = "packaging" },
+    { name = "platformdirs" },
 ]
 
 [package.dev-dependencies]
@@ -636,6 +637,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = "==2.14.3" },
     { name = "packaging", specifier = "==25.0" },
+    { name = "platformdirs", specifier = ">=4.5.1" },
 ]
 
 [package.metadata.requires-dev]
