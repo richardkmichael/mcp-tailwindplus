@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.7.19,<0.9.0"]
+requires = ["uv_build>=0.7.19,<0.10.0"]
 build-backend = "uv_build"
 
 [project]
@@ -21,8 +21,8 @@ classifiers = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp==2.14.3",
-    "packaging==25.0",
+    "fastmcp==2.14.5",
+    "packaging==26.0",
     "platformdirs>=4.5.1",
 ]
 
@@ -78,7 +78,7 @@ asyncio_mode = "auto"         # automatically detect async tests
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.5,<9.0.0",
+    "pytest>=8.3.5,<10.0.0",
     "pytest-asyncio>=0.21.0,<2.0.0",
     "ruff>=0.6.0,<1.0.0",
 ]
