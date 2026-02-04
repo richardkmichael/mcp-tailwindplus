@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "mcp-tailwindplus"
-version = "2.0.0"
+version = "2.1.0"
 description = "FastMCP server for browsing and searching TailwindPlus components"
 readme = "README.md"
 license = {text = "MIT"}

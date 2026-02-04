@@ -4,8 +4,9 @@ import argparse
 import glob
 import os
 import sys
+from importlib.metadata import version
 
-__version__ = "0.1.0"
+__version__ = version("mcp-tailwindplus")
 
 from .server import create_server
 from .tailwind_plus import TailwindPlus
