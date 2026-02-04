@@ -94,9 +94,9 @@ class ComponentNotFoundError(Exception):
 
 
 class TailwindPlus:
-    def __init__(self, data_file: str):
+    def __init__(self, data_file: str, cache_dir: str | None = None):
         self._data_file = data_file
-        cache_path = self._get_cache_path(data_file)
+        cache_path = self._get_cache_path(data_file, cache_dir)
 
         if self._cache_is_stale(cache_path, data_file):
             self._build_cache(data_file, cache_path)
@@ -116,11 +116,12 @@ class TailwindPlus:
         self.close()
 
     @staticmethod
-    def _get_cache_path(file_path: str) -> str:
+    def _get_cache_path(file_path: str, cache_dir: str | None = None) -> str:
         """Compute the SQLite cache path for a given data file."""
         abs_path = os.path.abspath(file_path)
         path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:16]
-        cache_dir = user_cache_dir("mcp-tailwindplus")
+        if cache_dir is None:
+            cache_dir = user_cache_dir("mcp-tailwindplus")
         return os.path.join(cache_dir, f"tailwindplus_components_cache_{path_hash}.db")
 
     @staticmethod

@@ -178,9 +178,9 @@ def data_file(sample_data, tmp_path):
 
 
 @pytest.fixture
-def tailwind_plus_instance(data_file):
+def tailwind_plus_instance(data_file, tmp_path):
     """Create a TailwindPlus instance from the temp data file."""
-    return TailwindPlus(data_file)
+    return TailwindPlus(data_file, cache_dir=str(tmp_path))
 
 
 class TestTailwindPlus:
@@ -277,7 +277,7 @@ class TestTailwindPlus:
         with open(test_file, "w") as f:
             json.dump(sample_data, f)
 
-        instance = TailwindPlus(str(test_file))
+        instance = TailwindPlus(str(test_file), cache_dir=str(tmp_path))
         component_names = instance.list_component_names()
         expected_names = [
             "Application UI.Forms.Input Groups.Label with leading icon",
@@ -302,43 +302,47 @@ class TestTailwindPlus:
 class TestSQLiteCache:
     """Test SQLite cache creation, reuse, and rebuild."""
 
-    def test_cache_file_is_created(self, data_file):
+    def test_cache_file_is_created(self, data_file, tmp_path):
         """Test that a cache DB file is created on first instantiation."""
-        cache_path = TailwindPlus._get_cache_path(data_file)
-        # Cache shouldn't exist yet (tmp_path is fresh)
+        cache_dir = str(tmp_path / "cache")
+        cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
         import os
 
         assert not os.path.exists(cache_path)
 
-        TailwindPlus(data_file)
+        TailwindPlus(data_file, cache_dir=cache_dir)
 
         assert os.path.exists(cache_path)
 
-    def test_cache_is_reused(self, data_file):
+    def test_cache_is_reused(self, data_file, tmp_path):
         """Test that second instantiation reuses the cache (no re-parse)."""
         import os
 
+        cache_dir = str(tmp_path / "cache")
+
         # First instantiation builds the cache
-        TailwindPlus(data_file)
-        cache_path = TailwindPlus._get_cache_path(data_file)
+        TailwindPlus(data_file, cache_dir=cache_dir)
+        cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
         first_mtime = os.stat(cache_path).st_mtime
 
         # Second instantiation should reuse
-        instance2 = TailwindPlus(data_file)
+        instance2 = TailwindPlus(data_file, cache_dir=cache_dir)
         second_mtime = os.stat(cache_path).st_mtime
 
         assert first_mtime == second_mtime
         assert instance2.version == "test-2025-07-15"
         assert len(instance2.list_component_names()) == 4
 
-    def test_cache_rebuilds_on_data_change(self, sample_data, data_file):
+    def test_cache_rebuilds_on_data_change(self, sample_data, data_file, tmp_path):
         """Test that modified data file triggers cache rebuild."""
         import os
         import time
 
+        cache_dir = str(tmp_path / "cache")
+
         # First instantiation builds the cache
-        TailwindPlus(data_file)
-        cache_path = TailwindPlus._get_cache_path(data_file)
+        TailwindPlus(data_file, cache_dir=cache_dir)
+        cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
         first_mtime = os.stat(cache_path).st_mtime
 
         # Modify the data file (change version)
@@ -348,16 +352,20 @@ class TestSQLiteCache:
             json.dump(sample_data, f)
 
         # Second instantiation should rebuild cache
-        instance2 = TailwindPlus(data_file)
+        instance2 = TailwindPlus(data_file, cache_dir=cache_dir)
         second_mtime = os.stat(cache_path).st_mtime
 
         assert second_mtime > first_mtime
         assert instance2.version == "test-2025-07-16-updated"
 
-    def test_cache_staleness_detects_size_change(self, sample_data, data_file):
+    def test_cache_staleness_detects_size_change(
+        self, sample_data, data_file, tmp_path
+    ):
         """Test that cache detects file size changes."""
-        TailwindPlus(data_file)
-        cache_path = TailwindPlus._get_cache_path(data_file)
+        cache_dir = str(tmp_path / "cache")
+
+        TailwindPlus(data_file, cache_dir=cache_dir)
+        cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
 
         # The cache should not be stale
         assert not TailwindPlus._cache_is_stale(cache_path, data_file)
