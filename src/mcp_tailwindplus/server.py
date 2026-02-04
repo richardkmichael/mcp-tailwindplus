@@ -5,11 +5,12 @@ from .tailwind_plus import TailwindPlus
 __all__ = ["create_server"]
 
 
-def create_server(tailwind_plus_instance: TailwindPlus) -> FastMCP:
+def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> FastMCP:
     """Factory function to create server with TailwindPlus instance."""
 
     server = FastMCP(
         name="tailwindplus",
+        version=version,
         instructions="""TailwindPlus component browser - search, list, and retrieve TailwindPlus components by name.
 
         This server provides access to a comprehensive library of TailwindPlus UI components including:

@@ -51,7 +51,7 @@ def main():
 
     try:
         tailwind_plus = TailwindPlus(data_file)
-        mcp_server = create_server(tailwind_plus)
+        mcp_server = create_server(tailwind_plus, version=__version__)
         mcp_server.run()
 
     except KeyboardInterrupt:

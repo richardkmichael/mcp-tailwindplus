@@ -124,7 +124,7 @@ def data_file(sample_mcp_data, tmp_path):
 def mcp_server(data_file, tmp_path):
     """Create server with test data from temp file."""
     test_tailwind_plus = TailwindPlus(data_file, cache_dir=str(tmp_path))
-    return create_server(test_tailwind_plus)
+    return create_server(test_tailwind_plus, version="0.0.0-test")
 
 
 class TestMCPServerFunctionality:
