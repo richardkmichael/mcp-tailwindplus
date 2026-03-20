@@ -101,7 +101,7 @@ class TailwindPlus:
         if self._cache_is_stale(cache_path, data_file):
             self._build_cache(data_file, cache_path)
         else:
-            self._db = sqlite3.connect(cache_path)
+            self._db = sqlite3.connect(cache_path, check_same_thread=False)
             self._db.row_factory = sqlite3.Row
             self._load_metadata_from_db()
 
@@ -181,7 +181,7 @@ class TailwindPlus:
         if os.path.exists(cache_path):
             os.remove(cache_path)
 
-        self._db = sqlite3.connect(cache_path)
+        self._db = sqlite3.connect(cache_path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._create_tables()
         self._populate_db(raw_data["tailwindplus"])

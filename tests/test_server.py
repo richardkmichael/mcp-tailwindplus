@@ -124,7 +124,8 @@ def data_file(sample_mcp_data, tmp_path):
 def mcp_server(data_file, tmp_path):
     """Create server with test data from temp file."""
     test_tailwind_plus = TailwindPlus(data_file, cache_dir=str(tmp_path))
-    return create_server(test_tailwind_plus, version="0.0.0-test")
+    yield create_server(test_tailwind_plus, version="0.0.0-test")
+    test_tailwind_plus.close()
 
 
 class TestMCPServerFunctionality:
@@ -321,8 +322,8 @@ class TestMCPServerMetadata:
     @pytest.mark.asyncio
     async def test_server_tools_exist(self, mcp_server):
         """Test that all expected tools are registered."""
-        tools = await mcp_server.get_tools()
-        tool_names = list(tools.keys())
+        tools = await mcp_server.list_tools()
+        tool_names = [t.name for t in tools]
 
         expected_tools = [
             "list_component_names",
@@ -337,10 +338,11 @@ class TestMCPServerMetadata:
     @pytest.mark.asyncio
     async def test_tool_metadata(self, mcp_server):
         """Test tool metadata and annotations."""
-        tools = await mcp_server.get_tools()
+        tools = await mcp_server.list_tools()
+        tools_by_name = {t.name: t for t in tools}
 
         # Test list tool
-        list_tool = tools["list_component_names"]
+        list_tool = tools_by_name["list_component_names"]
         assert (
             list_tool.description
             == "Get a complete list of all available TailwindPlus component names organized by category"
@@ -351,7 +353,7 @@ class TestMCPServerMetadata:
         assert list_tool.annotations.idempotentHint is True
 
         # Test get tool
-        get_tool = tools["get_component_by_full_name"]
+        get_tool = tools_by_name["get_component_by_full_name"]
         assert (
             get_tool.description
             == "Retrieve component code (HTML/React/Vue) for a specific TailwindPlus component by full name, framework, version, and mode"
@@ -360,7 +362,7 @@ class TestMCPServerMetadata:
         assert "components" in get_tool.tags
 
         # Test search tool
-        search_tool = tools["search_component_names"]
+        search_tool = tools_by_name["search_component_names"]
         assert (
             search_tool.description
             == "Search for TailwindPlus component names by pattern or keyword (case-insensitive)"
