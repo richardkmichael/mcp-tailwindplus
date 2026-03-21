@@ -1,6 +1,7 @@
 from fastmcp import FastMCP
+from fastmcp.server.apps import AppConfig, ResourceCSP
 
-from .tailwind_plus import TailwindPlus
+from .tailwind_plus import TailwindPlus, get_preview_viewer_html
 
 __all__ = ["create_server"]
 
@@ -52,6 +53,8 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
         },
     )
 
+    preview_viewer_uri = "ui://tailwindplus/preview-viewer"
+
     server.tool(
         tailwind_plus_instance.get_component_preview_by_full_name,
         description="Retrieve the preview HTML for a specific TailwindPlus component by full name, framework, version, and mode",
@@ -61,7 +64,26 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
             "readOnlyHint": True,
             "idempotentHint": True,
         },
+        app=AppConfig(resource_uri=preview_viewer_uri),
     )
+
+    server.resource(
+        preview_viewer_uri,
+        name="TailwindPlus Preview Viewer",
+        description="MCP Apps viewer for rendering TailwindPlus component previews",
+        tags={"app", "preview", "viewer"},
+        app=AppConfig(
+            csp=ResourceCSP(
+                resource_domains=[
+                    "https://rsms.me",
+                    "https://cdn.jsdelivr.net",
+                    "https://tailwindcss.com",
+                    "https://unpkg.com",
+                    "https://images.unsplash.com",
+                ],
+            ),
+        ),
+    )(get_preview_viewer_html)
 
     server.tool(
         tailwind_plus_instance.search_component_names,

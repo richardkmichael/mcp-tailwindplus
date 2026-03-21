@@ -371,6 +371,60 @@ class TestMCPServerMetadata:
         assert "components" in search_tool.tags
 
 
+class TestMCPAppsPreviewViewer:
+    """Test MCP Apps preview viewer configuration."""
+
+    @pytest.mark.asyncio
+    async def test_preview_viewer_resource_exists(self, mcp_server):
+        """Test that the ui:// preview viewer resource is registered."""
+        resources = await mcp_server.list_resources()
+        resource_uris = [str(r.uri) for r in resources]
+        assert "ui://tailwindplus/preview-viewer" in resource_uris
+
+    @pytest.mark.asyncio
+    async def test_preview_viewer_mime_type(self, mcp_server):
+        """Test that the preview viewer uses the MCP Apps MIME type, not plain text/html."""
+        resources = await mcp_server.list_resources()
+        viewer = next(
+            r
+            for r in resources
+            if str(r.uri) == "ui://tailwindplus/preview-viewer"
+        )
+        assert viewer.mime_type == "text/html;profile=mcp-app"
+
+    @pytest.mark.asyncio
+    async def test_preview_viewer_html_content(self, mcp_server):
+        """Test that the preview viewer returns valid HTML with the ext-apps SDK."""
+        result = await mcp_server.read_resource("ui://tailwindplus/preview-viewer")
+        html = result.contents[0].content
+        assert "ontoolresult" in html
+        assert "ext-apps" in html
+        assert "preview-container" in html
+        assert "tw-component-css" in html
+
+    @pytest.mark.asyncio
+    async def test_preview_tool_has_app_config(self, mcp_server):
+        """Test that the preview tool declares an app resource URI."""
+        tools = await mcp_server.list_tools()
+        preview_tool = next(
+            t for t in tools if t.name == "get_component_preview_by_full_name"
+        )
+        tool_meta = preview_tool.meta or {}
+        ui_meta = tool_meta.get("ui", tool_meta.get("fastmcp", {}).get("ui", {}))
+        assert ui_meta.get("resourceUri") == "ui://tailwindplus/preview-viewer"
+
+    @pytest.mark.asyncio
+    async def test_twplus_preview_resource_uses_text_html(self, mcp_server):
+        """Test that the twplus:// preview resource uses text/html, not the MCP Apps MIME type."""
+        templates = await mcp_server.list_resource_templates()
+        preview_template = next(
+            t
+            for t in templates
+            if "preview" in str(t.uri_template) and str(t.uri_template).startswith("twplus://")
+        )
+        assert preview_template.mime_type == "text/html"
+
+
 class TestMCPServerIntegration:
     """Test end-to-end server functionality."""
 
