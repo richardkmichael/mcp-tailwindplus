@@ -7,12 +7,29 @@
 - When done editing code, use `uv run ruff format .` and `uv run check . --fix` to format and check
 - To run tests use: `uv run pytest`
 
+# Architecture
+
+The project separates domain logic from MCP wiring:
+
+- `src/mcp_tailwindplus/tailwind_plus.py` — `TailwindPlus` class with all application logic
+  (SQLite cache, data parsing, component lookup, validation, enums, dataclasses). Has no
+  FastMCP dependency. Tool parameter schemas come from `Annotated` type hints on its methods.
+- `src/mcp_tailwindplus/server.py` — thin factory (`create_server`) that wires `TailwindPlus`
+  methods as FastMCP tools/resources with metadata (descriptions, tags, annotations).
+- `src/mcp_tailwindplus/__init__.py` — entrypoint, CLI argument parsing.
+
+This decoupling is intentional: `test_tailwind_plus.py` tests domain logic in isolation (no
+MCP server, no async), while `test_server.py` tests MCP wiring via `fastmcp.Client`.
+
+Tools are registered imperatively (`server.tool(instance.method, ...)`) rather than with
+`@mcp.tool` decorators because the functions being registered are bound methods defined in a
+separate module — there is no function definition to hang a `@` on. Wrapper functions would
+add boilerplate and lose the `Annotated` parameter metadata.
+
 # Project notes
 
-- This project does not use FastMCP's decorator methods
-- Main entrypoint is `src/mcp_tailwindplus/__init__.py`
-- FastMCP MCP server is created in `src/mcp_tailwindplus/server.py`
-- Functionality is provided by the class in `src/mcp_tailwindplus/tailwind_plus.py`; wrapped by the server
+- To inspect TailwindPlus data, access it: `jq '.tailwindplus' < $MCP_TAILWINDPLUS_DATA'`, the other top-level keys are metadata not TailwindPlus data
+
 
 # Resources and documentation
 
