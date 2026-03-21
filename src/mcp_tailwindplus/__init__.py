@@ -24,6 +24,23 @@ def main():
         help="Path to TailwindPlus components JSON data file",
     )
     parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="Transport protocol (default: stdio)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="HTTP server bind address (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="HTTP server port (default: 8000)",
+    )
+    parser.add_argument(
         "--clear-cache",
         action="store_true",
         help="Remove all cached component databases and exit",
@@ -52,7 +69,11 @@ def main():
     try:
         tailwind_plus = TailwindPlus(data_file)
         mcp_server = create_server(tailwind_plus, version=__version__)
-        mcp_server.run()
+
+        if args.transport == "http":
+            mcp_server.run(transport="http", host=args.host, port=args.port)
+        else:
+            mcp_server.run()
 
     except KeyboardInterrupt:
         print("\nServer stopped by user", file=sys.stderr)
