@@ -10,6 +10,14 @@
       "env": {
         "MCP_TAILWINDPLUS_DATA": "${MCP_TAILWINDPLUS_DATA}"
       }
+    },
+    "fastmcp_documentation": {
+      "type": "http",
+      "url": "https://gofastmcp.com/mcp"
+    },
+    "mcp_specification": {
+      "type": "http",
+      "url": "https://modelcontextprotocol.io/mcp"
     }
   }
 }
