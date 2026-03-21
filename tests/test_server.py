@@ -386,9 +386,7 @@ class TestMCPAppsPreviewViewer:
         """Test that the preview viewer uses the MCP Apps MIME type, not plain text/html."""
         resources = await mcp_server.list_resources()
         viewer = next(
-            r
-            for r in resources
-            if str(r.uri) == "ui://tailwindplus/preview-viewer"
+            r for r in resources if str(r.uri) == "ui://tailwindplus/preview-viewer"
         )
         assert viewer.mime_type == "text/html;profile=mcp-app"
 
@@ -420,7 +418,8 @@ class TestMCPAppsPreviewViewer:
         preview_template = next(
             t
             for t in templates
-            if "preview" in str(t.uri_template) and str(t.uri_template).startswith("twplus://")
+            if "preview" in str(t.uri_template)
+            and str(t.uri_template).startswith("twplus://")
         )
         assert preview_template.mime_type == "text/html"
 
