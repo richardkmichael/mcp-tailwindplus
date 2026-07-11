@@ -354,11 +354,10 @@ class TailwindPlus:
         mode: Mode,
     ) -> dict | None:
         """Retrieve a single snippet from the DB."""
-        mode_val = "none" if mode == Mode.NONE else mode.value
         row = self._db.execute(
             "SELECT * FROM snippets WHERE full_name=? AND framework=? "
             "AND tailwind_version=? AND mode=?",
-            (full_name, framework.value, tailwind_version.value, mode_val),
+            (full_name, framework.value, tailwind_version.value, mode.value),
         ).fetchone()
         return dict(row) if row else None
 
