@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import cache
 from importlib.metadata import version as mcp_server_version
+from pathlib import Path
 from typing import Annotated
 
 from packaging.version import Version
@@ -159,8 +160,7 @@ class TailwindPlus:
         if self._cache_is_stale(cache_path, data_file):
             self._build_cache(data_file, cache_path)
         else:
-            self._db = sqlite3.connect(cache_path, check_same_thread=False)
-            self._db.row_factory = sqlite3.Row
+            self._db = self._connect_readonly(cache_path)
             self._load_metadata_from_db()
 
         self._component_names = self._load_component_names()
@@ -180,6 +180,19 @@ class TailwindPlus:
         self.close()
 
     @staticmethod
+    def _connect_readonly(cache_path: str) -> sqlite3.Connection:
+        """Open the cache database read-only so any write raises instead of proceeding.
+
+        The connection is shared across threads (FastMCP may dispatch tool calls
+        from a worker thread); opening read-only makes the read-only assumption
+        explicit and enforced.
+        """
+        uri = f"{Path(cache_path).absolute().as_uri()}?mode=ro"
+        db = sqlite3.connect(uri, uri=True, check_same_thread=False)
+        db.row_factory = sqlite3.Row
+        return db
+
+    @staticmethod
     def _get_cache_path(file_path: str, cache_dir: str | None = None) -> str:
         """Compute the SQLite cache path for a given data file."""
         abs_path = os.path.abspath(file_path)
@@ -196,8 +209,7 @@ class TailwindPlus:
 
         db = None
         try:
-            db = sqlite3.connect(cache_path)
-            db.row_factory = sqlite3.Row
+            db = TailwindPlus._connect_readonly(cache_path)
             row = db.execute(
                 "SELECT value FROM metadata WHERE key = 'source_mtime'"
             ).fetchone()
@@ -251,6 +263,10 @@ class TailwindPlus:
         self._populate_db(raw_data["tailwindplus"])
         self._store_metadata(data_file)
         self._db.commit()
+
+        # Reopen read-only for the rest of the process: all further access is reads.
+        self._db.close()
+        self._db = self._connect_readonly(cache_path)
 
     def _create_tables(self) -> None:
         """Create the SQLite tables."""

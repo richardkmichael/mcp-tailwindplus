@@ -325,6 +325,13 @@ class TestSQLiteCache:
         with pytest.raises(sqlite3.ProgrammingError):
             tp._db.execute("SELECT 1")
 
+    def test_connection_is_read_only(self, tailwind_plus_instance):
+        """The cache connection rejects writes but still serves reads."""
+        with pytest.raises(sqlite3.OperationalError):
+            tailwind_plus_instance._db.execute("CREATE TABLE should_not_exist (x)")
+
+        assert tailwind_plus_instance.list_component_names()
+
     def test_cache_is_reused(self, data_file, tmp_path):
         """Test that second instantiation reuses the cache (no re-parse)."""
         import os
