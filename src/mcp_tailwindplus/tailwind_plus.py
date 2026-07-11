@@ -533,7 +533,7 @@ class TailwindPlus:
 
     def get_component_as_resource(
         self,
-        component_full_name: Annotated[
+        full_name: Annotated[
             str,
             "The full dotted path name of the component (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
         ],
@@ -541,7 +541,7 @@ class TailwindPlus:
             str,
             "Target framework - 'html', 'react', or 'vue'",
         ],
-        version: Annotated[
+        tailwind_version: Annotated[
             str,
             "Tailwind CSS version - '3' or '4'",
         ],
@@ -555,15 +555,15 @@ class TailwindPlus:
         Validates that the mode parameter matches the component type before retrieving the component.
         """
         return self.get_component_by_full_name(
-            component_full_name,
+            full_name,
             Framework(framework),
-            TailwindVersion(version),
+            TailwindVersion(tailwind_version),
             Mode(mode),
         )
 
     def get_component_preview_as_resource(
         self,
-        component_full_name: Annotated[
+        full_name: Annotated[
             str,
             "The full dotted path name of the component (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
         ],
@@ -571,7 +571,7 @@ class TailwindPlus:
             str,
             "Target framework - 'html', 'react', or 'vue'",
         ],
-        version: Annotated[
+        tailwind_version: Annotated[
             str,
             "Tailwind CSS version - '3' or '4'",
         ],
@@ -585,8 +585,8 @@ class TailwindPlus:
         Validates that the mode parameter matches the component type before retrieving the preview.
         """
         return self.get_component_preview_by_full_name(
-            component_full_name,
+            full_name,
             Framework(framework),
-            TailwindVersion(version),
+            TailwindVersion(tailwind_version),
             Mode(mode),
         )

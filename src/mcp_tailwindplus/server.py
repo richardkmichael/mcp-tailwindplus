@@ -108,7 +108,7 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
     )
 
     server.resource(
-        "twplus://{component_full_name}/{framework}/{version}/{mode}",
+        "twplus://{full_name}/{framework}/{tailwind_version}/{mode}",
         name="TailwindPlus Component Code",
         description="Get component code by full name, framework, version and mode",
         mime_type="application/json",
@@ -116,7 +116,7 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
     )(tailwind_plus_instance.get_component_as_resource)
 
     server.resource(
-        "twplus://{component_full_name}/{framework}/{version}/{mode}/preview",
+        "twplus://{full_name}/{framework}/{tailwind_version}/{mode}/preview",
         name="TailwindPlus Component Preview",
         description="Get component preview HTML by full name, framework, version and mode",
         mime_type="text/html",

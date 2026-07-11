@@ -128,6 +128,46 @@ def mcp_server(data_file, tmp_path):
     test_tailwind_plus.close()
 
 
+@pytest.fixture
+def space_free_server(tmp_path):
+    """Server whose one component has a space-free full name, so it can be reached
+    by a raw (RFC 3986-valid) twplus:// URI without percent-encoding."""
+    data = {
+        "version": "twplus-read-1",
+        "downloaded_at": "2026-01-01T00:00:00.000Z",
+        "component_count": 1,
+        "download_duration": "0.1s",
+        "downloader_version": "3.0.0",
+        "tailwindplus": {
+            "AppUI": {
+                "Forms": {
+                    "InputGroups": {
+                        "Basic": {
+                            "name": "Basic",
+                            "snippets": [
+                                {
+                                    "code": "<input>",
+                                    "language": "html",
+                                    "mode": "light",
+                                    "name": "html",
+                                    "preview": "<div>BASIC-PREVIEW</div>",
+                                    "supportsDarkMode": False,
+                                    "version": 4,
+                                }
+                            ],
+                        }
+                    }
+                }
+            }
+        },
+    }
+    path = tmp_path / "twplus-data.json"
+    path.write_text(json.dumps(data))
+    tp = TailwindPlus(str(path), cache_dir=str(tmp_path))
+    yield create_server(tp, version="0.0.0-test")
+    tp.close()
+
+
 class TestMCPServerFunctionality:
     """Test FastMCP server functionality using proper FastMCP testing patterns."""
 
@@ -422,6 +462,30 @@ class TestMCPAppsPreviewViewer:
             and str(t.uri_template).startswith("twplus://")
         )
         assert preview_template.mime_type == "text/html"
+
+    @pytest.mark.asyncio
+    async def test_twplus_preview_resource_read(self, space_free_server):
+        """A concrete twplus:// preview URI binds its template variables to the
+        renamed handler parameters and returns the preview HTML."""
+        result = await space_free_server.read_resource(
+            "twplus://AppUI.Forms.InputGroups.Basic/html/4/light/preview"
+        )
+        assert result.contents[0].content == "<div>BASIC-PREVIEW</div>"
+
+    @pytest.mark.asyncio
+    @pytest.mark.xfail(
+        reason="get_component_as_resource returns a Component, which FastMCP 3.4.4 "
+        "cannot serialize as resource contents; it should return JSON. Tracked for "
+        "the FastMCP resource review.",
+        strict=False,
+    )
+    async def test_twplus_code_resource_read(self, space_free_server):
+        """A concrete twplus:// code URI read (currently broken: the adapter returns
+        a Component that FastMCP cannot serialize)."""
+        result = await space_free_server.read_resource(
+            "twplus://AppUI.Forms.InputGroups.Basic/html/4/light"
+        )
+        assert result.contents[0].content
 
 
 class TestMCPServerIntegration:
