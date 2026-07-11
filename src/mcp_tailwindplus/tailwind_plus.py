@@ -153,7 +153,6 @@ class ComponentNotFoundError(Exception):
 
 class TailwindPlus:
     def __init__(self, data_file: str, cache_dir: str | None = None):
-        self._data_file = data_file
         cache_path = self._get_cache_path(data_file, cache_dir)
 
         if self._cache_is_stale(cache_path, data_file):
