@@ -365,7 +365,7 @@ class TailwindPlus:
         self, name: str, *, max_suggestions: int | None = None
     ) -> list[str]:
         """Generate component name suggestions based on partial matches."""
-        name_parts = [part.lower() for part in name.lower().split(".")]
+        name_parts = name.lower().split(".")
 
         suggestions = [
             comp_name
