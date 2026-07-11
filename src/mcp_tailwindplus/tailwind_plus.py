@@ -4,6 +4,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
+from importlib.metadata import version as mcp_server_version
 from typing import Annotated
 
 from packaging.version import Version
@@ -61,8 +62,6 @@ _PREVIEW_VIEWER_HTML = """\
 
 def get_preview_viewer_html() -> str:
     """Return the MCP Apps viewer HTML for rendering TailwindPlus component previews."""
-    from importlib.metadata import version as mcp_server_version
-
     return _PREVIEW_VIEWER_HTML.format(
         mcp_server_version=mcp_server_version("mcp-tailwindplus")
     )
