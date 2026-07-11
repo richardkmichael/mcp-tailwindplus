@@ -1,5 +1,5 @@
 from fastmcp import FastMCP
-from fastmcp.server.apps import AppConfig, ResourceCSP
+from fastmcp.apps import AppConfig, ResourceCSP
 
 from .tailwind_plus import TailwindPlus, get_preview_viewer_html
 
