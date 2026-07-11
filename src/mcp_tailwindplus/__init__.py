@@ -2,6 +2,7 @@
 
 import argparse
 import glob
+import logging
 import os
 import sys
 from importlib.metadata import version
@@ -12,6 +13,8 @@ from platformdirs import user_cache_dir
 
 from .server import create_server
 from .tailwind_plus import TailwindPlus
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -47,8 +50,19 @@ def main():
         action="store_true",
         help="Remove all cached component databases and exit",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging and print tracebacks on startup errors",
+    )
 
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.WARNING,
+        stream=sys.stderr,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
 
     if args.clear_cache:
         _clear_cache()
@@ -81,7 +95,10 @@ def main():
         print("\nServer stopped by user", file=sys.stderr)
         sys.exit(0)
     except Exception as e:
-        print(f"Error starting server: {e}", file=sys.stderr)
+        if args.debug:
+            logger.exception("Error starting server")
+        else:
+            print(f"Error starting server: {e}", file=sys.stderr)
         sys.exit(1)
 
 
