@@ -622,7 +622,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = "==3.4.4" },
     { name = "packaging", specifier = "==26.2" },
-    { name = "platformdirs", specifier = ">=4.5.1" },
+    { name = "platformdirs", specifier = "==4.10.0" },
 ]
 
 [package.metadata.requires-dev]
