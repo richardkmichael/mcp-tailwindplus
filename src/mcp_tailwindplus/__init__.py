@@ -8,6 +8,8 @@ from importlib.metadata import version
 
 __version__ = version("mcp-tailwindplus")
 
+from platformdirs import user_cache_dir
+
 from .server import create_server
 from .tailwind_plus import TailwindPlus
 
@@ -85,8 +87,6 @@ def main():
 
 def _clear_cache():
     """Remove all cached component databases."""
-    from platformdirs import user_cache_dir
-
     cache_dir = user_cache_dir("mcp-tailwindplus")
     pattern = os.path.join(cache_dir, "tailwindplus_components_cache_*.db")
     files = glob.glob(pattern)
