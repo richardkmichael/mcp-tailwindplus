@@ -170,6 +170,12 @@ class TailwindPlus:
         if hasattr(self, "_db") and self._db:
             self._db.close()
 
+    def __enter__(self) -> "TailwindPlus":
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()
+
     def __del__(self) -> None:
         self.close()
 

@@ -69,13 +69,13 @@ def main():
         parser.error(f"TailwindPlus data file not found: {data_file}")
 
     try:
-        tailwind_plus = TailwindPlus(data_file)
-        mcp_server = create_server(tailwind_plus, version=__version__)
+        with TailwindPlus(data_file) as tailwind_plus:
+            mcp_server = create_server(tailwind_plus, version=__version__)
 
-        if args.transport == "http":
-            mcp_server.run(transport="http", host=args.host, port=args.port)
-        else:
-            mcp_server.run()
+            if args.transport == "http":
+                mcp_server.run(transport="http", host=args.host, port=args.port)
+            else:
+                mcp_server.run()
 
     except KeyboardInterrupt:
         print("\nServer stopped by user", file=sys.stderr)
