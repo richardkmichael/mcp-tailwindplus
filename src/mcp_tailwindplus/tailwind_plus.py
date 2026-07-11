@@ -376,6 +376,47 @@ class TailwindPlus:
 
         return suggestions if max_suggestions is None else suggestions[:max_suggestions]
 
+    @staticmethod
+    def _validate_mode_for_component(full_name: str, mode: Mode) -> None:
+        """Validate that the mode matches the component type.
+
+        Application UI and Marketing components require mode 'light', 'dark', or
+        'system'; eCommerce components require mode 'none'.
+        """
+        if full_name.startswith("Ecommerce"):
+            if mode != Mode.NONE:
+                raise ValueError(
+                    f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
+                )
+        elif mode == Mode.NONE:
+            raise ValueError(
+                f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+            )
+
+    def _get_validated_snippet(
+        self,
+        full_name: str,
+        framework: Framework,
+        tailwind_version: TailwindVersion,
+        mode: Mode,
+    ) -> dict:
+        """Validate the mode and fetch the snippet.
+
+        Raises ComponentNotFoundError with up to 5 suggested component names if
+        the component is not found.
+        """
+        self._validate_mode_for_component(full_name, mode)
+
+        snippet = self._get_snippet(full_name, framework, tailwind_version, mode)
+
+        if snippet is None:
+            suggestions = self._suggestions_for_component_name(
+                full_name, max_suggestions=5
+            )
+            raise ComponentNotFoundError(full_name, suggestions)
+
+        return snippet
+
     def list_tailwindplus_information(self) -> dict[str, str | int]:
         """Get TailwindPlus metadata information including version, download date, component count, etc."""
         return {
@@ -428,25 +469,9 @@ class TailwindPlus:
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        # Validate mode matches component type
-        if full_name.startswith("Ecommerce"):
-            if mode != Mode.NONE:
-                raise ValueError(
-                    f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
-                )
-        else:
-            if mode == Mode.NONE:
-                raise ValueError(
-                    f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
-                )
-
-        snippet = self._get_snippet(full_name, framework, tailwind_version, mode)
-
-        if snippet is None:
-            suggestions = self._suggestions_for_component_name(
-                full_name, max_suggestions=5
-            )
-            raise ComponentNotFoundError(full_name, suggestions)
+        snippet = self._get_validated_snippet(
+            full_name, framework, tailwind_version, mode
+        )
 
         return Component.from_snippet(snippet, self.version, full_name)
 
@@ -478,26 +503,9 @@ class TailwindPlus:
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
-        # Validate mode matches component type
-        if full_name.startswith("Ecommerce"):
-            if mode != Mode.NONE:
-                raise ValueError(
-                    f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
-                )
-        else:
-            # Application UI components must NOT use Mode.NONE
-            if mode == Mode.NONE:
-                raise ValueError(
-                    f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
-                )
-
-        snippet = self._get_snippet(full_name, framework, tailwind_version, mode)
-
-        if snippet is None:
-            suggestions = self._suggestions_for_component_name(
-                full_name, max_suggestions=5
-            )
-            raise ComponentNotFoundError(full_name, suggestions)
+        snippet = self._get_validated_snippet(
+            full_name, framework, tailwind_version, mode
+        )
 
         return snippet["preview"]
 
@@ -524,25 +532,11 @@ class TailwindPlus:
 
         Validates that the mode parameter matches the component type before retrieving the component.
         """
-        framework_enum = Framework(framework)
-        version_enum = TailwindVersion(version)
-        # Convert string mode to enum, handling "none" -> None conversion
-        mode_enum = Mode(mode)
-
-        # Validate mode matches component type (same as main method)
-        if component_full_name.startswith("Ecommerce"):
-            if mode_enum != Mode.NONE:
-                raise ValueError(
-                    f"eCommerce component '{component_full_name}' must use mode='none'. Got mode='{mode}'. eCommerce components only support mode='none'."
-                )
-        else:
-            if mode_enum == Mode.NONE:
-                raise ValueError(
-                    f"Component '{component_full_name}' cannot use mode='none'. Got mode='{mode}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
-                )
-
         return self.get_component_by_full_name(
-            component_full_name, framework_enum, version_enum, mode_enum
+            component_full_name,
+            Framework(framework),
+            TailwindVersion(version),
+            Mode(mode),
         )
 
     def get_component_preview_as_resource(
@@ -568,22 +562,9 @@ class TailwindPlus:
 
         Validates that the mode parameter matches the component type before retrieving the preview.
         """
-        framework_enum = Framework(framework)
-        version_enum = TailwindVersion(version)
-        mode_enum = Mode(mode)
-
-        # Validate mode matches component type (same as main method)
-        if component_full_name.startswith("Ecommerce"):
-            if mode_enum != Mode.NONE:
-                raise ValueError(
-                    f"eCommerce component '{component_full_name}' must use mode='none'. Got mode='{mode}'. eCommerce components only support mode='none'."
-                )
-        else:
-            if mode_enum == Mode.NONE:
-                raise ValueError(
-                    f"Component '{component_full_name}' cannot use mode='none'. Got mode='{mode}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
-                )
-
         return self.get_component_preview_by_full_name(
-            component_full_name, framework_enum, version_enum, mode_enum
+            component_full_name,
+            Framework(framework),
+            TailwindVersion(version),
+            Mode(mode),
         )
