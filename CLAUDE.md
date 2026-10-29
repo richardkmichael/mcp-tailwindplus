@@ -16,6 +16,8 @@ The project separates domain logic from MCP wiring:
   FastMCP dependency. Tool parameter schemas come from `Annotated` type hints on its methods.
 - `src/mcp_tailwindplus/server.py` — thin factory (`create_server`) that wires `TailwindPlus`
   methods as FastMCP tools/resources with metadata (descriptions, tags, annotations).
+- `src/mcp_tailwindplus/preview_viewer.py` — the MCP Apps viewer page that renders the preview
+  tool's results in the client.
 - `src/mcp_tailwindplus/__init__.py` — entrypoint, CLI argument parsing.
 
 This decoupling is intentional: `test_tailwind_plus.py` tests domain logic in isolation (no

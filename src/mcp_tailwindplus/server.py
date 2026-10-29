@@ -5,13 +5,8 @@ from dataclasses import asdict
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig, ResourceCSP
 
-from .tailwind_plus import (
-    Framework,
-    Mode,
-    TailwindPlus,
-    TailwindVersion,
-    get_preview_viewer_html,
-)
+from .preview_viewer import get_preview_viewer_html
+from .tailwind_plus import Framework, Mode, TailwindPlus, TailwindVersion
 
 __all__ = ["create_server"]
 
