@@ -179,7 +179,9 @@ for each fills in the project's settings. eCommerce components still complete to
 1. `list_component_names` - List all available components
 2. `get_component_by_full_name` - Get component code (HTML/React/Vue)
 3. `get_component_preview_by_full_name` - Get component preview HTML
-4. `search_component_names` - Search components by keyword
+4. `search_component_names` - Search components by name, visible text, named parts (icons, UI
+   components, HTML elements, labeled sections), and category description; returns the best matches
+   with their text
 
 ## Available Resources
 
@@ -212,7 +214,8 @@ twplus://components/Application UI/Forms/Input Groups/Label with leading icon/ht
 Components are organized hierarchically:
 - Categories: Marketing, Application UI, E-commerce, etc.
 - Full Names: Use dot-separated paths like `Marketing.Hero Sections.Simple centered`
-- Search: Supports partial matching with keywords
+- Search: Matches words, including partial words, in names, visible text, named parts, and
+  subcategory descriptions
 
 ## Development
 

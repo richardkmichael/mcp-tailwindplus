@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
@@ -9,6 +10,27 @@ from typing import Annotated
 
 from packaging.version import Version
 from platformdirs import user_cache_dir
+
+from .component_text import extract_parts, extract_prose
+
+# Bump when the cache's tables change, so caches built by older code are rebuilt.
+CACHE_FORMAT = "2"
+
+MAX_SEARCH_RESULTS = 50
+
+# Most components' prose is shorter; the cap keeps a few long pages, such as a
+# full-year calendar, from dominating search results.
+MAX_RESULT_PROSE_CHARS = 1500
+
+# bm25 weights for the search index columns: full_name, parts,
+# description, prose.
+_SEARCH_COLUMN_WEIGHTS = (10.0, 5.0, 2.0, 1.0)
+
+# Separates prose fragments and parts in the search index.
+_TEXT_SEPARATOR = "\n"
+
+# Marks the matched terms of a description in search queries.
+_MATCH_START, _MATCH_END = "\x02", "\x03"
 
 
 class Framework(Enum):
@@ -75,6 +97,18 @@ class Component:
             mode=mode,
             supportsDarkMode=bool(snippet_data["supports_dark_mode"]),
         )
+
+
+@dataclass
+class SearchResult:
+    """A component matching a search, with the text that describes it."""
+
+    full_name: str
+    prose: list[str]
+    parts: list[str]
+    # The component's subcategory description, only when it matched the search
+    # and this is the subcategory's first result.
+    description: str | None
 
 
 class ComponentNotFoundError(Exception):
@@ -152,6 +186,12 @@ class TailwindPlus:
         try:
             db = TailwindPlus._connect_readonly(cache_path)
             row = db.execute(
+                "SELECT value FROM metadata WHERE key = 'cache_format'"
+            ).fetchone()
+            if row is None or row["value"] != CACHE_FORMAT:
+                return True
+
+            row = db.execute(
                 "SELECT value FROM metadata WHERE key = 'source_mtime'"
             ).fetchone()
             if row is None:
@@ -201,7 +241,8 @@ class TailwindPlus:
         self._db = sqlite3.connect(cache_path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._create_tables()
-        self._populate_db(raw_data["tailwindplus"])
+        # Data from downloaders before 4.0.0 has no descriptions.
+        self._populate_db(raw_data["tailwindplus"], raw_data.get("descriptions", {}))
         self._store_metadata(data_file)
         self._db.commit()
 
@@ -234,9 +275,20 @@ class TailwindPlus:
             )
             """
         )
+        # One row per component. The porter tokenizer stems words, so "dropdowns"
+        # matches "dropdown".
+        self._db.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS component_search USING fts5(
+                full_name, parts, description, prose,
+                tokenize = 'porter unicode61'
+            )
+            """
+        )
 
-    def _populate_db(self, tailwindplus_data: dict) -> None:
-        """Traverse the JSON tree and insert snippets into the DB."""
+    def _populate_db(self, tailwindplus_data: dict, descriptions: dict) -> None:
+        """Traverse the JSON tree, insert snippets into the DB, and index each
+        component for search."""
 
         def traverse(obj: dict, path: list[str] | None = None):
             if path is None:
@@ -271,15 +323,61 @@ class TailwindPlus:
                                 1 if snippet["supportsDarkMode"] else 0,
                             ),
                         )
+                    self._index_component(
+                        component_name, value["snippets"], descriptions
+                    )
                 elif isinstance(value, dict):
                     traverse(value, current_path)
 
         traverse(tailwindplus_data)
 
+    def _index_component(
+        self, full_name: str, snippets: list[dict], descriptions: dict
+    ) -> None:
+        """Add a component's searchable text to the search index.
+
+        Prose and parts come from one snippet per framework, since they are the
+        same across frameworks and modes; Tailwind 4 snippets are preferred. The description is the subcategory's description and
+        introduction. Product descriptions are left out: they list examples for
+        the whole product, so they would match nearly every component.
+        """
+
+        def code(framework: str) -> str:
+            by_version = {
+                str(s["version"]): s["code"] for s in snippets if s["name"] == framework
+            }
+            return by_version.get("4", by_version.get("3", ""))
+
+        html, react = code("html"), code("react")
+        subcategory = ".".join(full_name.split(".")[:3])
+        subcategory_text = descriptions.get("subcategories", {}).get(subcategory, {})
+        description = " ".join(
+            text
+            for text in (
+                subcategory_text.get("description"),
+                subcategory_text.get("introduction"),
+            )
+            if text
+        )
+
+        self._db.execute(
+            """
+            INSERT INTO component_search (full_name, parts, description, prose)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                full_name,
+                _TEXT_SEPARATOR.join(extract_parts(html, react)),
+                description,
+                _TEXT_SEPARATOR.join(extract_prose(html)),
+            ),
+        )
+
     def _store_metadata(self, data_file: str) -> None:
         """Store metadata in the DB including source file stats for staleness checks."""
         stat = os.stat(data_file)
         metadata = {
+            "cache_format": CACHE_FORMAT,
             "source_file": os.path.abspath(data_file),
             "source_mtime": str(stat.st_mtime),
             "source_size": str(stat.st_size),
@@ -406,11 +504,75 @@ class TailwindPlus:
         self,
         search_term: Annotated[
             str,
-            "Search term to match against component names (case-insensitive, supports partial matches)",
+            "Words to search for, such as 'email input' or 'star rating' (case-insensitive; words may be partial). Icons are named by their shape, so search 'exclamation triangle' for a warning icon",
         ],
-    ) -> list[str]:
-        """Search for TailwindPlus component names by pattern or keyword."""
-        return self._suggestions_for_component_name(search_term)
+        limit: Annotated[
+            int,
+            f"Maximum number of results, 1 to {MAX_SEARCH_RESULTS}",
+        ] = 10,
+    ) -> list[SearchResult]:
+        """Search components by name, visible text, named parts and subcategory
+        description, best matches first.
+
+        Components matching every word come first; when none do, components
+        matching any word are returned. Each result carries the component's
+        visible prose (capped at MAX_RESULT_PROSE_CHARS) and parts. When a
+        subcategory description matched, it comes with the subcategory's first
+        result.
+        """
+        if not 1 <= limit <= MAX_SEARCH_RESULTS:
+            raise ValueError(
+                f"limit must be between 1 and {MAX_SEARCH_RESULTS}; got {limit}"
+            )
+
+        # Quote each word so FTS5 query syntax in the search term is matched as
+        # text, and match it as a prefix so partial words match.
+        terms = [f'"{word}"*' for word in re.findall(r"\w+", search_term.lower())]
+        if not terms:
+            return []
+
+        for operator in (" AND ", " OR "):
+            rows = self._db.execute(
+                f"""
+                SELECT
+                    full_name,
+                    parts,
+                    prose,
+                    highlight(component_search, 2, '{_MATCH_START}', '{_MATCH_END}')
+                        AS description
+                FROM component_search
+                WHERE component_search MATCH ?
+                ORDER BY bm25(component_search, {", ".join(map(str, _SEARCH_COLUMN_WEIGHTS))})
+                LIMIT ?
+                """,
+                (operator.join(terms), limit),
+            ).fetchall()
+            if rows:
+                break
+
+        results = []
+        described_subcategories = set()
+        for row in rows:
+            # Components of a subcategory share its description, so return it
+            # only on the subcategory's first result.
+            subcategory = row["full_name"].rsplit(".", 1)[0]
+            description = None
+            if (
+                _MATCH_START in row["description"]
+                and subcategory not in described_subcategories
+            ):
+                description = _strip_match_marks(row["description"])
+                described_subcategories.add(subcategory)
+
+            results.append(
+                SearchResult(
+                    full_name=row["full_name"],
+                    prose=_capped_prose(_split_text(row["prose"])),
+                    parts=_split_text(row["parts"]),
+                    description=description,
+                )
+            )
+        return results
 
     def component_name_levels(self, parent_levels: list[str]) -> list[str]:
         """Return the distinct name levels directly below the given parent levels.
@@ -494,3 +656,25 @@ class TailwindPlus:
         )
 
         return snippet["preview"]
+
+
+def _split_text(text: str) -> list[str]:
+    """Split search index text back into its fragments."""
+    return text.split(_TEXT_SEPARATOR) if text else []
+
+
+def _capped_prose(fragments: list[str]) -> list[str]:
+    """Keep the leading fragments within MAX_RESULT_PROSE_CHARS, marking a cut
+    with a final '…'."""
+    kept, length = [], 0
+    for fragment in fragments:
+        length += len(fragment)
+        if length > MAX_RESULT_PROSE_CHARS:
+            return [*kept, "…"]
+        kept.append(fragment)
+    return kept
+
+
+def _strip_match_marks(text: str) -> str:
+    """Remove the marks that search queries put around matched terms."""
+    return text.replace(_MATCH_START, "").replace(_MATCH_END, "")

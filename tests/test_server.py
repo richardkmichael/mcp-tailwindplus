@@ -239,65 +239,45 @@ class TestMCPServerFunctionality:
 
     @pytest.mark.asyncio
     async def test_search_component_names(self, mcp_server):
-        """Test searching for component names."""
+        """Results carry each component's name, prose, parts and matched
+        description."""
         async with Client(mcp_server) as client:
             result = await client.call_tool(
                 "search_component_names", {"search_term": "Forms"}
             )
 
-            assert len(result.content) == 1
-            assert result.content[0].text is not None
-
-            # Parse the JSON result
-            search_results = json.loads(result.content[0].text)
-            assert isinstance(search_results, list)
-            assert len(search_results) == 2
-
-            expected_results = [
-                "Application UI.Forms.Input Groups.With icon",
-                "Application UI.Forms.Select Menus.Basic",
-            ]
-            assert sorted(search_results) == sorted(expected_results)
+        results = json.loads(result.content[0].text)
+        assert sorted(r["full_name"] for r in results) == [
+            "Application UI.Forms.Input Groups.With icon",
+            "Application UI.Forms.Select Menus.Basic",
+        ]
+        assert set(results[0]) == {"full_name", "prose", "parts", "description"}
 
     @pytest.mark.asyncio
     async def test_search_components_case_insensitive(self, mcp_server):
         """Test case insensitive search."""
         async with Client(mcp_server) as client:
-            # Test lowercase
             result_lower = await client.call_tool(
                 "search_component_names", {"search_term": "hero"}
             )
-
-            # Test uppercase
             result_upper = await client.call_tool(
                 "search_component_names", {"search_term": "HERO"}
             )
 
-            assert len(result_lower.content) == 1
-            assert len(result_upper.content) == 1
+        lower_results = json.loads(result_lower.content[0].text)
+        assert lower_results == json.loads(result_upper.content[0].text)
+        assert [r["full_name"] for r in lower_results] == [
+            "Marketing.Hero Sections.Centered"
+        ]
 
-            # The results come back as JSON strings from FastMCP Client
-            # For single results, FastMCP might return the item directly instead of a list
-            lower_text = result_lower.content[0].text
-            upper_text = result_upper.content[0].text
-
-            # Try to parse as JSON, if it fails it might be a single string
-            try:
-                lower_results = json.loads(lower_text)
-            except json.JSONDecodeError:
-                # Single result returned as plain string, wrap in list
-                lower_results = [lower_text]
-
-            try:
-                upper_results = json.loads(upper_text)
-            except json.JSONDecodeError:
-                # Single result returned as plain string, wrap in list
-                upper_results = [upper_text]
-
-            assert lower_results == upper_results
-            assert isinstance(lower_results, list)
-            assert len(lower_results) == 1
-            assert "Marketing.Hero Sections.Centered" in lower_results
+    @pytest.mark.asyncio
+    async def test_search_limit(self, mcp_server):
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "search_component_names",
+                {"search_term": "Application UI", "limit": 1},
+            )
+        assert len(json.loads(result.content[0].text)) == 1
 
     @pytest.mark.asyncio
     async def test_search_components_no_matches(self, mcp_server):
@@ -306,15 +286,7 @@ class TestMCPServerFunctionality:
             result = await client.call_tool(
                 "search_component_names", {"search_term": "nonexistent"}
             )
-
-            # Handle empty results - might return no content or empty list
-            if len(result.content) == 0:
-                search_results = []
-            else:
-                search_results = json.loads(result.content[0].text)
-
-            assert isinstance(search_results, list)
-            assert len(search_results) == 0
+        assert result.structured_content == {"result": []}
 
 
 class TestMCPServerMetadata:
@@ -369,9 +341,8 @@ class TestMCPServerMetadata:
 
         # Test search tool
         search_tool = tools_by_name["search_component_names"]
-        assert (
-            search_tool.description
-            == "Search for TailwindPlus component names by pattern or keyword (case-insensitive)"
+        assert search_tool.description.startswith(
+            "Search TailwindPlus components by name, visible text"
         )
         assert "search" in search_tool.tags
         assert "components" in search_tool.tags
@@ -702,7 +673,9 @@ class TestMCPServerIntegration:
             )
             assert len(search_result.content) == 1
 
-            search_names = json.loads(search_result.content[0].text)
+            search_names = [
+                r["full_name"] for r in json.loads(search_result.content[0].text)
+            ]
 
             # Verify each search result can be retrieved
             for name in search_names:

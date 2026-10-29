@@ -4,6 +4,8 @@ import sqlite3
 import pytest
 
 from mcp_tailwindplus.tailwind_plus import (
+    MAX_RESULT_PROSE_CHARS,
+    MAX_SEARCH_RESULTS,
     Component,
     ComponentNotFoundError,
     Framework,
@@ -11,6 +13,7 @@ from mcp_tailwindplus.tailwind_plus import (
     Mode,
     TailwindPlus,
     TailwindVersion,
+    _capped_prose,
 )
 
 
@@ -23,6 +26,17 @@ def sample_data():
         "component_count": 4,
         "download_duration": "1.0s",
         "downloader_version": "3.0.0",
+        "descriptions": {
+            "products": {
+                "Application UI": {"description": "Form layouts, tables, modal dialogs"}
+            },
+            "subcategories": {
+                "Application UI.Navigation.Breadcrumbs": {
+                    "description": "Breadcrumb examples for Tailwind CSS.",
+                    "introduction": "Show users where they are in a site hierarchy.",
+                }
+            },
+        },
         "tailwindplus": {
             "Application UI": {
                 "Forms": {
@@ -50,7 +64,9 @@ def sample_data():
                                     "version": 4,
                                 },
                                 {
-                                    "code": """<div>
+                                    "code": """import { EnvelopeIcon } from '@heroicons/react/20/solid'
+
+<div>
   <label for="email" class="block text-sm font-medium leading-6 text-gray-900">Email</label>
   <div class="relative mt-2 rounded-md shadow-sm">
     <input type="email" name="email" id="email" class="block w-full rounded-md border-0 py-1.5 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" placeholder="you@example.com">
@@ -248,13 +264,13 @@ class TestTailwindPlus:
         assert exc_info.value.component_name == "nonexistent.component"
 
     def test_search_component_names(self, tailwind_plus_instance):
-        """Test searching for component names."""
-        # Search for "Forms" should return form-related components
+        """Words in the dotted name match."""
         results = tailwind_plus_instance.search_component_names("Forms")
 
-        assert isinstance(results, list)
-        assert len(results) == 2  # Label with leading icon and Simple
-        assert all("Forms" in name for name in results)
+        assert sorted(result.full_name for result in results) == [
+            "Application UI.Forms.Input Groups.Label with leading icon",
+            "Application UI.Forms.Select Menus.Simple",
+        ]
 
     def test_search_components_case_insensitive(self, tailwind_plus_instance):
         """Test that search is case insensitive."""
@@ -262,15 +278,13 @@ class TestTailwindPlus:
         results_upper = tailwind_plus_instance.search_component_names("BREADCRUMBS")
 
         assert results_lower == results_upper
-        assert len(results_lower) == 1
-        assert "Application UI.Navigation.Breadcrumbs.Simple" in results_lower
+        assert [result.full_name for result in results_lower] == [
+            "Application UI.Navigation.Breadcrumbs.Simple"
+        ]
 
     def test_search_components_no_match(self, tailwind_plus_instance):
         """Test searching with no matches."""
-        results = tailwind_plus_instance.search_component_names("nonexistent")
-
-        assert isinstance(results, list)
-        assert len(results) == 0
+        assert tailwind_plus_instance.search_component_names("nonexistent") == []
 
     def test_explicit_data_file_path(self, sample_data, tmp_path):
         """Test that TailwindPlus loads data from explicitly provided file path."""
@@ -299,6 +313,122 @@ class TestTailwindPlus:
         assert info["component_count"] == 4
         assert info["download_duration"] == "1.0s"
         assert info["downloader_version"] == "3.0.0"
+
+
+class TestComponentSearch:
+    """Test search across names, prose, parts and descriptions."""
+
+    EMAIL_INPUT = "Application UI.Forms.Input Groups.Label with leading icon"
+    BREADCRUMBS = "Application UI.Navigation.Breadcrumbs.Simple"
+
+    def _names(self, results):
+        return [result.full_name for result in results]
+
+    def test_prose_match_returns_prose_and_parts(self, tailwind_plus_instance):
+        [result] = tailwind_plus_instance.search_component_names("you@example")
+
+        assert result.full_name == self.EMAIL_INPUT
+        assert result.prose == ["Email", "you@example.com"]
+        assert result.parts == ["envelope icon"]
+        assert result.description is None
+
+    def test_part_match(self, tailwind_plus_instance):
+        results = tailwind_plus_instance.search_component_names("envelope")
+        assert self._names(results) == [self.EMAIL_INPUT]
+
+    def test_matched_description_is_returned(self, tailwind_plus_instance):
+        [result] = tailwind_plus_instance.search_component_names("hierarchy")
+
+        assert result.full_name == self.BREADCRUMBS
+        assert result.description == (
+            "Breadcrumb examples for Tailwind CSS. "
+            "Show users where they are in a site hierarchy."
+        )
+
+    def test_description_comes_with_first_result_of_subcategory(
+        self, sample_data, tmp_path
+    ):
+        """Components of a subcategory share its description, so it is returned
+        once."""
+        breadcrumbs = sample_data["tailwindplus"]["Application UI"]["Navigation"][
+            "Breadcrumbs"
+        ]
+        breadcrumbs["With chevrons"] = {
+            **breadcrumbs["Simple"],
+            "name": "With chevrons",
+        }
+        path = tmp_path / "two-breadcrumbs.json"
+        path.write_text(json.dumps(sample_data))
+
+        with TailwindPlus(str(path), cache_dir=str(tmp_path)) as tailwind_plus:
+            results = tailwind_plus.search_component_names("hierarchy")
+
+        assert len(results) == 2
+        assert results[0].description is not None
+        assert results[1].description is None
+
+    def test_unmatched_description_is_omitted(self, tailwind_plus_instance):
+        [result] = tailwind_plus_instance.search_component_names("projects")
+
+        assert result.full_name == self.BREADCRUMBS
+        assert result.description is None
+
+    def test_product_descriptions_are_not_searched(self, tailwind_plus_instance):
+        assert tailwind_plus_instance.search_component_names("tables") == []
+
+    def test_partial_and_stemmed_words(self, tailwind_plus_instance):
+        assert self._names(
+            tailwind_plus_instance.search_component_names("breadcr")
+        ) == [self.BREADCRUMBS]
+        assert self._names(tailwind_plus_instance.search_component_names("emails")) == [
+            self.EMAIL_INPUT
+        ]
+
+    def test_all_words_before_any_word(self, tailwind_plus_instance):
+        """Components matching every word win; without any, those matching some
+        word are returned."""
+        assert self._names(
+            tailwind_plus_instance.search_component_names("email label")
+        ) == [self.EMAIL_INPUT]
+        assert sorted(
+            self._names(tailwind_plus_instance.search_component_names("email projects"))
+        ) == [self.EMAIL_INPUT, self.BREADCRUMBS]
+
+    def test_limit(self, tailwind_plus_instance):
+        assert (
+            len(tailwind_plus_instance.search_component_names("simple", limit=1)) == 1
+        )
+
+    @pytest.mark.parametrize("limit", [0, MAX_SEARCH_RESULTS + 1])
+    def test_limit_out_of_range(self, tailwind_plus_instance, limit):
+        with pytest.raises(ValueError, match="limit must be between"):
+            tailwind_plus_instance.search_component_names("simple", limit=limit)
+
+    @pytest.mark.parametrize("search_term", ["", "  ", '"', 'email" OR *'])
+    def test_query_syntax_is_searched_as_text(
+        self, tailwind_plus_instance, search_term
+    ):
+        """Search terms are words, never FTS5 query syntax."""
+        tailwind_plus_instance.search_component_names(search_term)
+
+    def test_long_prose_is_capped(self):
+        fragment = "x" * (MAX_RESULT_PROSE_CHARS // 2)
+        assert _capped_prose([fragment, fragment, fragment]) == [
+            fragment,
+            fragment,
+            "…",
+        ]
+
+    def test_data_without_descriptions(self, sample_data, tmp_path):
+        """Data files from downloaders before 4.0.0 have no descriptions."""
+        del sample_data["descriptions"]
+        path = tmp_path / "no-descriptions.json"
+        path.write_text(json.dumps(sample_data))
+
+        with TailwindPlus(str(path), cache_dir=str(tmp_path)) as tailwind_plus:
+            results = tailwind_plus.search_component_names("projects")
+
+        assert [result.description for result in results] == [None]
 
 
 class TestSQLiteCache:
@@ -392,6 +522,19 @@ class TestSQLiteCache:
             json.dump(sample_data, f, indent=4)
 
         # Now cache should be stale due to size change
+        assert TailwindPlus._cache_is_stale(cache_path, data_file)
+
+    def test_cache_from_older_format_is_stale(self, data_file, tmp_path):
+        """A cache built before the current cache format is rebuilt."""
+        cache_dir = str(tmp_path / "cache")
+        TailwindPlus(data_file, cache_dir=cache_dir).close()
+        cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
+
+        db = sqlite3.connect(cache_path)
+        db.execute("DELETE FROM metadata WHERE key = 'cache_format'")
+        db.commit()
+        db.close()
+
         assert TailwindPlus._cache_is_stale(cache_path, data_file)
 
     def test_missing_cache_is_stale(self, data_file):

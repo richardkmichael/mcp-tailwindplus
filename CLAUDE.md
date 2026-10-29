@@ -33,7 +33,9 @@ add boilerplate and lose the `Annotated` parameter metadata.
 
 # Project notes
 
-- To inspect TailwindPlus data, access it: `jq '.tailwindplus' < $MCP_TAILWINDPLUS_DATA'`, the other top-level keys are metadata not TailwindPlus data
+- To inspect TailwindPlus data, access it: `jq '.tailwindplus' < $MCP_TAILWINDPLUS_DATA'`,
+  `descriptions` holds product and subcategory descriptions, and the other top-level keys are
+  metadata
 
 
 # Resources and documentation

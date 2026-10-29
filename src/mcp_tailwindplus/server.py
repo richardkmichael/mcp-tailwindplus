@@ -115,10 +115,10 @@ def create_server(
 
     server.tool(
         tailwind_plus_instance.search_component_names,
-        description="Search for TailwindPlus component names by pattern or keyword (case-insensitive)",
+        description="Search TailwindPlus components by name, visible text (labels, placeholders, headings), named parts (icons, UI components, HTML elements such as nav or table, and labeled sections such as 'Mobile menu'), and category description. Returns the best matches first, each with its visible text and parts, so you can choose without retrieving the code",
         tags={"search", "components", "find"},
         annotations={
-            "title": "Search Component Names",
+            "title": "Search Components",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
