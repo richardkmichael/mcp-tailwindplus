@@ -389,8 +389,8 @@ class TestMCPServerMetadata:
         )
         assert "list" in list_tool.tags
         assert "components" in list_tool.tags
-        assert list_tool.annotations.readOnlyHint is True
-        assert list_tool.annotations.idempotentHint is True
+        assert list_tool.annotations.read_only_hint is True
+        assert list_tool.annotations.idempotent_hint is True
 
         # Test get tool
         get_tool = tools_by_name["get_component_by_full_name"]
@@ -474,7 +474,7 @@ class TestMCPAppsPreviewViewer:
 
     @pytest.mark.asyncio
     @pytest.mark.xfail(
-        reason="get_component_as_resource returns a Component, which FastMCP 3.4.4 "
+        reason="get_component_as_resource returns a Component, which FastMCP "
         "cannot serialize as resource contents; it should return JSON. Tracked for "
         "the FastMCP resource review.",
         strict=False,
