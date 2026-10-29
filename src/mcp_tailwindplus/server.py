@@ -19,6 +19,35 @@ __all__ = ["create_server"]
 
 logger = logging.getLogger(__name__)
 
+_INSTRUCTIONS = """\
+TailwindPlus component browser - search, list, and retrieve TailwindPlus components by name.
+
+This server provides access to a comprehensive library of TailwindPlus UI components including:
+  - Marketing components (hero sections, feature sections, pricing, testimonials, etc.)
+  - Application UI components (forms, navigation, data display, overlays, etc.)
+  - eCommerce components (product lists, shopping carts, checkout forms, etc.)
+
+Components are available in multiple frameworks (HTML, React, Vue), Tailwind CSS versions
+(3, 4), and theme modes (light, dark, system, none).
+
+Searching:
+
+- search_component_names matches words in component names, visible text (labels, placeholders,
+  headings), named parts (icons, UI components, HTML elements, labeled sections such as
+  'Mobile menu'), and category descriptions. Each result includes the component's text, so you
+  can choose a component without retrieving its code.
+- Search with the words a component shows or is built from, such as 'pricing table' or
+  'profile dropdown'.
+- Icons are named by their shape, not their meaning: search 'exclamation triangle' for a
+  warning icon.
+
+IMPORTANT - Mode Requirements:
+
+- Always specify framework (html/react/vue), tailwind_version (3/4), and mode when retrieving components
+- Application UI and Marketing components: use mode 'light', 'dark', or 'system'
+- eCommerce components: use mode 'none' only
+- Choose framework, version, and mode that match your project requirements"""
+
 
 def create_server(
     tailwind_plus_instance: TailwindPlus,
@@ -36,23 +65,7 @@ def create_server(
     server = FastMCP(
         name="tailwindplus",
         version=version,
-        instructions="""TailwindPlus component browser - search, list, and retrieve TailwindPlus components by name.
-
-        This server provides access to a comprehensive library of TailwindPlus UI components including:
-          - Marketing components (hero sections, feature sections, pricing, testimonials, etc.)
-          - Application UI components (forms, navigation, data display, overlays, etc.)
-          - eCommerce components (product lists, shopping carts, checkout forms, etc.)
-
-        Components are available in multiple frameworks (HTML, React, Vue), Tailwind CSS versions
-        (3, 4), and theme modes (light, dark, system, none).
-
-        IMPORTANT - Mode Requirements:
-
-        - Always specify framework (html/react/vue), tailwind_version (3/4), and mode when retrieving components
-        - Application UI and Marketing components: use mode 'light', 'dark', or 'system'
-        - eCommerce components: use mode 'none' only
-        - Choose framework, version, and mode that match your project requirements
-        """,
+        instructions=_INSTRUCTIONS,
         # Listings and reads never change while the server runs. The TTL bounds how
         # long a client keeps results after a restart with a newer data file.
         cache_ttl=3600,

@@ -297,6 +297,10 @@ class TestMCPServerMetadata:
         assert mcp_server.name == "tailwindplus"
         assert "component browser" in mcp_server.instructions.lower()
 
+    def test_instructions_describe_searching(self, mcp_server):
+        assert "search_component_names matches words" in mcp_server.instructions
+        assert "exclamation triangle" in mcp_server.instructions
+
     @pytest.mark.asyncio
     async def test_server_tools_exist(self, mcp_server):
         """Test that all expected tools are registered."""
