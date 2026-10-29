@@ -4,6 +4,12 @@ from dataclasses import asdict
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig, ResourceCSP
+from mcp.types import (
+    CompletionArgument,
+    CompletionContext,
+    PromptReference,
+    ResourceTemplateReference,
+)
 
 from .preview_viewer import get_preview_viewer_html
 from .tailwind_plus import Framework, Mode, TailwindPlus, TailwindVersion
@@ -191,4 +197,62 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
         tags={"resource", "component", "preview"},
     )(read_component_preview)
 
+    name_levels = ("product", "category", "subcategory", "component")
+
+    def complete_component_argument(
+        ref: PromptReference | ResourceTemplateReference,
+        argument: CompletionArgument,
+        context: CompletionContext | None,
+    ) -> list[str] | None:
+        """Complete the parameters of the component resource templates."""
+        if not isinstance(ref, ResourceTemplateReference) or ref.uri not in (
+            component_code_uri,
+            component_preview_uri,
+        ):
+            return None
+
+        chosen = (context.arguments or {}) if context else {}
+
+        if argument.name in name_levels:
+            # Each level's choices depend on the levels chosen before it.
+            parent_names = name_levels[: name_levels.index(argument.name)]
+            parent_levels = [chosen.get(name) for name in parent_names]
+            if None in parent_levels:
+                return None
+            choices = tailwind_plus_instance.component_name_levels(parent_levels)
+        elif argument.name == "mode":
+            product = chosen.get("product")
+            modes = (
+                tailwind_plus_instance.modes_for_product(product)
+                if product
+                else list(Mode)
+            )
+            choices = [mode.value for mode in modes]
+        elif argument.name == "framework":
+            choices = [framework.value for framework in Framework]
+        elif argument.name == "tailwind_version":
+            # Clients may preselect the first suggestion, so offer the current version first.
+            choices = sorted(
+                (version.value for version in TailwindVersion), reverse=True
+            )
+        else:
+            return None
+
+        return _matching_choices(choices, argument.value)
+
+    server.add_completion_handler(complete_component_argument)
+
     return server
+
+
+def _matching_choices(choices: list[str], typed: str) -> list[str]:
+    """Return the choices matching typed text, case-insensitively: those that
+    start with it first, then those that contain it elsewhere."""
+    needle = typed.lower()
+    starting = [choice for choice in choices if choice.lower().startswith(needle)]
+    containing = [
+        choice
+        for choice in choices
+        if needle in choice.lower() and not choice.lower().startswith(needle)
+    ]
+    return starting + containing

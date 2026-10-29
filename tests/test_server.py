@@ -3,6 +3,7 @@ import json
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ResourceError, ToolError
+from mcp.types import ResourceTemplateReference
 
 from mcp_tailwindplus.server import create_server
 from mcp_tailwindplus.tailwind_plus import TailwindPlus
@@ -528,6 +529,98 @@ class TestComponentResources:
 
         assert "2 component names" in caplog.text
         assert "Application UI.Forms.Input Groups.With prefix/suffix" in caplog.text
+
+
+CODE_TEMPLATE = ResourceTemplateReference(
+    type="ref/resource",
+    uri="twplus://components/{product}/{category}/{subcategory}/{component}"
+    "/{framework}/{tailwind_version}/{mode}",
+)
+PREVIEW_TEMPLATE = ResourceTemplateReference(
+    type="ref/resource",
+    uri=f"{CODE_TEMPLATE.uri}/preview",
+)
+INPUT_GROUP_LEVELS = {
+    "product": "Application UI",
+    "category": "Forms",
+    "subcategory": "Input Groups",
+}
+
+
+class TestResourceTemplateCompletion:
+    """Test argument completion for the twplus:// resource templates."""
+
+    @pytest.mark.asyncio
+    async def test_completions_capability(self, mcp_server):
+        async with Client(mcp_server) as client:
+            assert client.server_capabilities.completions is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("template", [CODE_TEMPLATE, PREVIEW_TEMPLATE])
+    @pytest.mark.parametrize(
+        ("argument", "typed", "context", "expected"),
+        [
+            ("product", "", None, ["Application UI", "Marketing"]),
+            ("product", "app", None, ["Application UI"]),
+            ("category", "", {"product": "Application UI"}, ["Forms", "Navigation"]),
+            (
+                "subcategory",
+                "groups",
+                {"product": "Application UI", "category": "Forms"},
+                ["Input Groups"],
+            ),
+            ("component", "w", INPUT_GROUP_LEVELS, ["With icon"]),
+            ("category", "", None, []),
+        ],
+    )
+    async def test_name_levels(
+        self, mcp_server, template, argument, typed, context, expected
+    ):
+        """Each level completes from the levels chosen before it, matching typed
+        text at the start first, then anywhere."""
+        async with Client(mcp_server) as client:
+            completion = await client.complete(
+                template, {"name": argument, "value": typed}, context
+            )
+        assert completion.values == expected
+
+    @pytest.mark.asyncio
+    async def test_framework_and_tailwind_version(self, mcp_server):
+        async with Client(mcp_server) as client:
+            framework = await client.complete(
+                CODE_TEMPLATE, {"name": "framework", "value": "r"}
+            )
+            tailwind_version = await client.complete(
+                CODE_TEMPLATE, {"name": "tailwind_version", "value": ""}
+            )
+        assert framework.values == ["react"]
+        assert tailwind_version.values == ["4", "3"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("context", "typed", "expected"),
+        [
+            ({"product": "Ecommerce"}, "", ["none"]),
+            ({"product": "Marketing"}, "", ["light", "dark", "system"]),
+            ({"product": "Marketing"}, "d", ["dark"]),
+            (None, "", ["light", "dark", "system", "none"]),
+        ],
+    )
+    async def test_mode_follows_chosen_product(
+        self, mcp_server, context, typed, expected
+    ):
+        async with Client(mcp_server) as client:
+            completion = await client.complete(
+                CODE_TEMPLATE, {"name": "mode", "value": typed}, context
+            )
+        assert completion.values == expected
+
+    @pytest.mark.asyncio
+    async def test_other_template_gets_no_completions(self, mcp_server):
+        other = ResourceTemplateReference(type="ref/resource", uri="other://{name}")
+        async with Client(mcp_server) as client:
+            completion = await client.complete(other, {"name": "name", "value": ""})
+        assert completion.values == []
 
 
 class TestMCPServerIntegration:

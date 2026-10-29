@@ -526,6 +526,23 @@ class TestErrorHandling:
         )
 
 
+class TestComponentNameLevels:
+    """Test listing the name levels below a parent."""
+
+    @pytest.mark.parametrize(
+        ("parent_levels", "expected"),
+        [
+            ([], ["Application UI", "Ecommerce"]),
+            (["Application UI"], ["Forms", "Navigation"]),
+            (["Application UI", "Forms"], ["Input Groups", "Select Menus"]),
+            (["Application UI", "Forms", "Select Menus"], ["Simple"]),
+            (["Marketing"], []),
+        ],
+    )
+    def test_levels_below_parent(self, tailwind_plus_instance, parent_levels, expected):
+        assert tailwind_plus_instance.component_name_levels(parent_levels) == expected
+
+
 class TestModeValidation:
     """Test mode validation logic for eCommerce vs non-eCommerce components."""
 

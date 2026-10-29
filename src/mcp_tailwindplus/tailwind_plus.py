@@ -412,6 +412,21 @@ class TailwindPlus:
         """Search for TailwindPlus component names by pattern or keyword."""
         return self._suggestions_for_component_name(search_term)
 
+    def component_name_levels(self, parent_levels: list[str]) -> list[str]:
+        """Return the distinct name levels directly below the given parent levels.
+
+        With no parent levels, return the products. For example, the parent levels
+        ['Application UI', 'Forms'] return subcategories such as 'Input Groups'.
+        """
+        depth = len(parent_levels)
+        return sorted(
+            {
+                levels[depth]
+                for levels in (name.split(".") for name in self._component_names)
+                if len(levels) > depth and levels[:depth] == parent_levels
+            }
+        )
+
     def get_component_by_full_name(
         self,
         full_name: Annotated[
