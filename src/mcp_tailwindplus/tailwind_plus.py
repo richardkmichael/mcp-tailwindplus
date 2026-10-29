@@ -13,6 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
+import orjson
 from packaging.version import Version
 from platformdirs import user_cache_dir
 
@@ -263,8 +264,9 @@ class TailwindPlus:
 
     def _build_cache(self, data_file: str, cache_path: str) -> None:
         """Parse JSON and build the SQLite cache."""
-        with open(data_file) as f:
-            raw_data = json.load(f)
+        # The data file is hundreds of megabytes; orjson parses it about three
+        # times faster than the json module.
+        raw_data = orjson.loads(Path(data_file).read_bytes())
 
         # Extract and validate metadata
         self.version = raw_data["version"]
