@@ -637,6 +637,16 @@ class TestResourceAdapterMethods:
 class TestModeValidation:
     """Test mode validation logic for eCommerce vs non-eCommerce components."""
 
+    def test_modes_for_product(self):
+        """eCommerce components support only 'none'; all others support the
+        three themed modes."""
+        assert TailwindPlus.modes_for_product("Ecommerce") == [Mode.NONE]
+        assert TailwindPlus.modes_for_product("Marketing") == [
+            Mode.LIGHT,
+            Mode.DARK,
+            Mode.SYSTEM,
+        ]
+
     def test_ecommerce_component_with_valid_mode(self, tailwind_plus_instance):
         """Test that eCommerce components work with Mode.NONE."""
         component = tailwind_plus_instance.get_component_by_full_name(

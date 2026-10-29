@@ -402,21 +402,29 @@ class TailwindPlus:
         return suggestions if max_suggestions is None else suggestions[:max_suggestions]
 
     @staticmethod
-    def _validate_mode_for_component(full_name: str, mode: Mode) -> None:
-        """Validate that the mode matches the component type.
+    def modes_for_product(product: str) -> list[Mode]:
+        """Return the modes the components of a product support.
 
-        Application UI and Marketing components require mode 'light', 'dark', or
-        'system'; eCommerce components require mode 'none'.
+        Application UI and Marketing components support 'light', 'dark', and
+        'system'; eCommerce components support only 'none'.
         """
-        if full_name.startswith("Ecommerce"):
-            if mode != Mode.NONE:
-                raise ValueError(
-                    f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
-                )
-        elif mode == Mode.NONE:
+        if product == "Ecommerce":
+            return [Mode.NONE]
+        return [Mode.LIGHT, Mode.DARK, Mode.SYSTEM]
+
+    @classmethod
+    def _validate_mode_for_component(cls, full_name: str, mode: Mode) -> None:
+        """Validate that the mode matches the component's product."""
+        product = full_name.split(".", 1)[0]
+        if mode in cls.modes_for_product(product):
+            return
+        if mode != Mode.NONE:
             raise ValueError(
-                f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+                f"eCommerce component '{full_name}' must use mode='none'. Got mode='{mode.value}'. eCommerce components only support mode='none'."
             )
+        raise ValueError(
+            f"Component '{full_name}' cannot use mode='none'. Got mode='{mode.value}'. Application UI and Marketing components support modes: 'light', 'dark', 'system'."
+        )
 
     def _get_validated_snippet(
         self,
