@@ -138,6 +138,19 @@ class TestMCPServerFunctionality:
     """Test FastMCP server functionality using proper FastMCP testing patterns."""
 
     @pytest.mark.asyncio
+    async def test_list_component_names_by_prefix(self, mcp_server):
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "list_component_names", {"prefix": "Application UI.Forms"}
+            )
+        assert result.structured_content == {
+            "result": [
+                "Application UI.Forms.Input Groups.With icon",
+                "Application UI.Forms.Select Menus.Basic",
+            ]
+        }
+
+    @pytest.mark.asyncio
     async def test_list_all_component_names(self, mcp_server):
         """Test the list_component_names tool."""
         async with Client(mcp_server) as client:
@@ -341,10 +354,7 @@ class TestMCPServerMetadata:
 
         # Test list tool
         list_tool = tools_by_name["list_component_names"]
-        assert (
-            list_tool.description
-            == "Get a complete list of all available TailwindPlus component names organized by category"
-        )
+        assert list_tool.description.startswith("List TailwindPlus component names")
         assert "list" in list_tool.tags
         assert "components" in list_tool.tags
         assert list_tool.annotations.read_only_hint is True

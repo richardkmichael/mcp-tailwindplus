@@ -175,7 +175,8 @@ uses them when retrieving components. eCommerce components still use mode `none`
 
 ## Available Tools
 
-1. `list_component_names` - List all available components
+1. `list_component_names` - List component names, all or those under a branch such as
+   `Application UI.Forms`
 2. `get_component_by_full_name` - Get component code (HTML/React/Vue)
 3. `get_component_preview_by_full_name` - Get component preview HTML
 4. `search_component_names` - Search components by name, visible text, named parts (icons, UI

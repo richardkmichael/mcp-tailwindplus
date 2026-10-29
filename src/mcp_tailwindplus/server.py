@@ -102,10 +102,10 @@ def create_server(
 
     server.tool(
         tailwind_plus_instance.list_component_names,
-        description="Get a complete list of all available TailwindPlus component names organized by category",
+        description="List TailwindPlus component names, sorted, optionally only those under a branch such as 'Application UI.Forms'. The full list is long, so prefer a branch or search_component_names",
         tags={"list", "components", "browse"},
         annotations={
-            "title": "List All Components",
+            "title": "List Components",
             "readOnlyHint": True,
             "idempotentHint": True,
         },

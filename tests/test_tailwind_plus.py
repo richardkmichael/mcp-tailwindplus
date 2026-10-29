@@ -230,6 +230,35 @@ class TestTailwindPlus:
         assert "Application UI.Navigation.Breadcrumbs.Simple" in names
         assert "Ecommerce.Product Lists.Simple" in names
 
+    @pytest.mark.parametrize(
+        ("prefix", "expected"),
+        [
+            (
+                "Application UI.Forms",
+                [
+                    "Application UI.Forms.Input Groups.Label with leading icon",
+                    "Application UI.Forms.Select Menus.Simple",
+                ],
+            ),
+            (
+                "application ui.forms.",
+                [
+                    "Application UI.Forms.Input Groups.Label with leading icon",
+                    "Application UI.Forms.Select Menus.Simple",
+                ],
+            ),
+            ("Ecommerce", ["Ecommerce.Product Lists.Simple"]),
+            ("Ecommerce.Product Lists.Simple", ["Ecommerce.Product Lists.Simple"]),
+            ("Application UI.Form", []),
+            ("Marketing", []),
+        ],
+    )
+    def test_list_component_names_by_prefix(
+        self, tailwind_plus_instance, prefix, expected
+    ):
+        """The prefix matches whole levels of the dotted name, ignoring case."""
+        assert tailwind_plus_instance.list_component_names(prefix) == expected
+
     def test_get_component_by_full_name_exists(self, tailwind_plus_instance):
         """Test getting an existing component by full name."""
         result = tailwind_plus_instance.get_component_by_full_name(

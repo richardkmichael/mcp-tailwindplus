@@ -496,9 +496,28 @@ class TailwindPlus:
             "downloader_version": self.downloader_version,
         }
 
-    def list_component_names(self) -> list[str]:
-        """Get a complete list of all available TailwindPlus component names."""
-        return sorted(self._component_names)
+    def list_component_names(
+        self,
+        prefix: Annotated[
+            str,
+            "Leading levels of the dotted name, such as 'Application UI.Forms', to list only that branch (case-insensitive); empty lists all components",
+        ] = "",
+    ) -> list[str]:
+        """Get the TailwindPlus component names, sorted, optionally only those
+        under a branch of the dotted name.
+
+        The prefix matches whole levels, so 'Application UI.Forms' lists
+        'Application UI.Forms.Input Groups.…' but would not list a sibling
+        named 'Application UI.Formsets'.
+        """
+        branch = prefix.strip().rstrip(".").lower()
+        return sorted(
+            name
+            for name in self._component_names
+            if not branch
+            or name.lower() == branch
+            or name.lower().startswith(f"{branch}.")
+        )
 
     def search_component_names(
         self,
