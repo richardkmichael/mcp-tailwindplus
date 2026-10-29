@@ -501,6 +501,34 @@ class TestComponentResources:
         with pytest.raises(ResourceError, match=message):
             await mcp_server.read_resource(uri)
 
+    def test_warns_about_unaddressable_names(self, data_file, tmp_path, caplog):
+        """The sample data has one three-level name, which no template can address."""
+        with TailwindPlus(data_file, cache_dir=str(tmp_path)) as tailwind_plus:
+            create_server(tailwind_plus)
+
+        assert "1 component names" in caplog.text
+        assert "Marketing.Hero Sections.Centered" in caplog.text
+
+    def test_warns_about_names_containing_slash(
+        self, sample_mcp_data, tmp_path, caplog
+    ):
+        """A '/' in a level would split it across URI path segments."""
+        input_groups = sample_mcp_data["tailwindplus"]["Application UI"]["Forms"][
+            "Input Groups"
+        ]
+        input_groups["With prefix/suffix"] = {
+            **input_groups["With icon"],
+            "name": "With prefix/suffix",
+        }
+        path = tmp_path / "slash-data.json"
+        path.write_text(json.dumps(sample_mcp_data))
+
+        with TailwindPlus(str(path), cache_dir=str(tmp_path)) as tailwind_plus:
+            create_server(tailwind_plus)
+
+        assert "2 component names" in caplog.text
+        assert "Application UI.Forms.Input Groups.With prefix/suffix" in caplog.text
+
 
 class TestMCPServerIntegration:
     """Test end-to-end server functionality."""
