@@ -310,6 +310,20 @@ class TestMCPServerMetadata:
         assert mcp_server.name == "tailwindplus"
         assert "component browser" in mcp_server.instructions.lower()
 
+    @pytest.mark.asyncio
+    async def test_server_identity(self, mcp_server):
+        """Clients receive the project's website and icon."""
+        async with Client(mcp_server) as client:
+            server_info = client.server_info
+
+        assert (
+            server_info.website_url
+            == "https://github.com/richardkmichael/mcp-tailwindplus"
+        )
+        [icon] = server_info.icons
+        assert icon.mime_type == "image/svg+xml"
+        assert icon.src.startswith("data:image/svg+xml;base64,")
+
     def test_instructions_describe_searching(self, mcp_server):
         assert "search_component_names matches words" in mcp_server.instructions
         assert "exclamation triangle" in mcp_server.instructions

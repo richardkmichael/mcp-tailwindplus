@@ -1,13 +1,16 @@
+import base64
 import json
 import logging
 from dataclasses import asdict
 from enum import Enum
+from importlib.metadata import metadata
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig, ResourceCSP
 from mcp.types import (
     CompletionArgument,
     CompletionContext,
+    Icon,
     PromptReference,
     ResourceTemplateReference,
 )
@@ -18,6 +21,23 @@ from .tailwind_plus import Framework, Mode, TailwindPlus, TailwindVersion
 __all__ = ["create_server"]
 
 logger = logging.getLogger(__name__)
+
+# The project's own mark, a grid of component tiles; embedded so the server
+# needs no network access to show it.
+_ICON_SVG = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="#1e293b"/>
+<rect x="12" y="12" width="18" height="18" rx="4" fill="#34d399"/>
+<rect x="34" y="12" width="18" height="18" rx="4" fill="#94a3b8"/>
+<rect x="12" y="34" width="18" height="18" rx="4" fill="#94a3b8"/>
+<rect x="34" y="34" width="18" height="18" rx="4" fill="#94a3b8"/>
+</svg>"""
+
+_ICON = Icon(
+    src="data:image/svg+xml;base64," + base64.b64encode(_ICON_SVG.encode()).decode(),
+    mime_type="image/svg+xml",
+    sizes=["any"],
+)
 
 _INSTRUCTIONS = """\
 TailwindPlus component browser - search, list, and retrieve TailwindPlus components by name.
@@ -47,6 +67,15 @@ IMPORTANT - Mode Requirements:
 - Application UI and Marketing components: use mode 'light', 'dark', or 'system'
 - eCommerce components: use mode 'none' only
 - Choose framework, version, and mode that match your project requirements"""
+
+
+def _homepage_url() -> str | None:
+    """Return the project's Homepage URL from its package metadata."""
+    for project_url in metadata("mcp-tailwindplus").get_all("Project-URL") or []:
+        label, _, url = project_url.partition(",")
+        if label.strip() == "Homepage":
+            return url.strip()
+    return None
 
 
 def _instructions(
@@ -91,6 +120,8 @@ def create_server(
     server = FastMCP(
         name="tailwindplus",
         version=version,
+        website_url=_homepage_url(),
+        icons=[_ICON],
         instructions=_instructions(
             project_framework, project_tailwind_version, project_mode
         ),
