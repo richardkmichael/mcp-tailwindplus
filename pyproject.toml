@@ -22,8 +22,8 @@ classifiers = [
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp==3.4.4",
-    "packaging==26.2",
-    "platformdirs==4.10.0",
+    "packaging==26.3",
+    "platformdirs==4.14.0",
 ]
 
 [project.urls]
@@ -75,6 +75,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"         # automatically detect async tests
+asyncio_default_fixture_loop_scope = "function"
 
 [dependency-groups]
 dev = [
