@@ -12,7 +12,6 @@ __version__ = version("mcp-tailwindplus")
 
 from platformdirs import user_cache_dir
 
-from .server import create_server
 from .tailwind_plus import Framework, Mode, TailwindPlus, TailwindVersion
 
 logger = logging.getLogger(__name__)
@@ -124,6 +123,8 @@ def main():
         parser, args.mode, "MCP_TAILWINDPLUS_MODE", Mode, MODE_CHOICES
     )
 
+    from .server import create_server
+
     try:
         with TailwindPlus(data_file) as tailwind_plus:
             mcp_server = create_server(
@@ -188,6 +189,17 @@ def _clear_cache():
         print(f"Removed: {f}")
 
     print(f"\nCleared {len(files)} cache file(s)")
+
+
+def __getattr__(name: str):
+    # The server module imports FastMCP, which takes most of a second. Importing
+    # it on first use keeps the package light for the worker processes that
+    # parse component code while the cache is built.
+    if name == "create_server":
+        from .server import create_server
+
+        return create_server
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = ["__version__", "create_server", "TailwindPlus", "main"]
