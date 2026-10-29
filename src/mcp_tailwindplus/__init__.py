@@ -5,6 +5,7 @@ import glob
 import logging
 import os
 import sys
+from enum import Enum
 from importlib.metadata import version
 
 __version__ = version("mcp-tailwindplus")
@@ -12,9 +13,14 @@ __version__ = version("mcp-tailwindplus")
 from platformdirs import user_cache_dir
 
 from .server import create_server
-from .tailwind_plus import TailwindPlus
+from .tailwind_plus import Framework, Mode, TailwindPlus, TailwindVersion
 
 logger = logging.getLogger(__name__)
+
+FRAMEWORK_CHOICES = [framework.value for framework in Framework]
+TAILWIND_VERSION_CHOICES = [version.value for version in TailwindVersion]
+# 'none' is not a project choice: it is the only mode of eCommerce components.
+MODE_CHOICES = [mode.value for mode in Mode if mode is not Mode.NONE]
 
 
 def main():
@@ -55,6 +61,24 @@ def main():
         action="store_true",
         help="Enable debug logging and print tracebacks on startup errors",
     )
+    parser.add_argument(
+        "--framework",
+        choices=FRAMEWORK_CHOICES,
+        help="Project's framework, offered first when completing resource URIs "
+        "(default: MCP_TAILWINDPLUS_FRAMEWORK)",
+    )
+    parser.add_argument(
+        "--tailwind-version",
+        choices=TAILWIND_VERSION_CHOICES,
+        help="Project's Tailwind CSS version, offered first when completing "
+        "resource URIs (default: MCP_TAILWINDPLUS_TAILWIND_VERSION)",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=MODE_CHOICES,
+        help="Project's theme mode, offered first when completing resource URIs "
+        "for Application UI and Marketing components (default: MCP_TAILWINDPLUS_MODE)",
+    )
 
     args = parser.parse_args()
 
@@ -82,9 +106,33 @@ def main():
     if not os.path.exists(data_file):
         parser.error(f"TailwindPlus data file not found: {data_file}")
 
+    project_framework = _project_setting(
+        parser,
+        args.framework,
+        "MCP_TAILWINDPLUS_FRAMEWORK",
+        Framework,
+        FRAMEWORK_CHOICES,
+    )
+    project_tailwind_version = _project_setting(
+        parser,
+        args.tailwind_version,
+        "MCP_TAILWINDPLUS_TAILWIND_VERSION",
+        TailwindVersion,
+        TAILWIND_VERSION_CHOICES,
+    )
+    project_mode = _project_setting(
+        parser, args.mode, "MCP_TAILWINDPLUS_MODE", Mode, MODE_CHOICES
+    )
+
     try:
         with TailwindPlus(data_file) as tailwind_plus:
-            mcp_server = create_server(tailwind_plus, version=__version__)
+            mcp_server = create_server(
+                tailwind_plus,
+                version=__version__,
+                project_framework=project_framework,
+                project_tailwind_version=project_tailwind_version,
+                project_mode=project_mode,
+            )
 
             if args.transport == "http":
                 mcp_server.run(transport="http", host=args.host, port=args.port)
@@ -100,6 +148,22 @@ def main():
         else:
             print(f"Error starting server: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def _project_setting[SettingT: Enum](
+    parser: argparse.ArgumentParser,
+    cli_value: str | None,
+    env_name: str,
+    setting_type: type[SettingT],
+    choices: list[str],
+) -> SettingT | None:
+    """Return a project setting from the command line, else the environment."""
+    value = cli_value or os.environ.get(env_name)
+    if value is None:
+        return None
+    if value not in choices:
+        parser.error(f"{env_name} must be one of {', '.join(choices)}; got {value!r}")
+    return setting_type(value)
 
 
 def _clear_cache():

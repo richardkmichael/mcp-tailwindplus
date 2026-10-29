@@ -164,6 +164,15 @@ Ask for code for a use-case, help with a sketch:
 ### Environment Variables
 
 - `MCP_TAILWINDPLUS_DATA`: Path to TailwindPlus component data file (alternative to `--tailwindplus-data`)
+- `MCP_TAILWINDPLUS_FRAMEWORK`, `MCP_TAILWINDPLUS_TAILWIND_VERSION`, `MCP_TAILWINDPLUS_MODE`: The
+  project settings below (alternatives to `--framework`, `--tailwind-version`, `--mode`)
+
+### Project Settings
+
+Set the project's framework (`html`, `react`, `vue`), Tailwind CSS version (`3`, `4`), and theme
+mode (`light`, `dark`, `system`) with `--framework`, `--tailwind-version`, and `--mode`. When a
+client completes a resource URI, these values are offered first, so accepting the first suggestion
+for each fills in the project's settings. eCommerce components still complete to mode `none`.
 
 ## Available Tools
 

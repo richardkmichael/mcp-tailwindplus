@@ -6,7 +6,12 @@ from fastmcp.exceptions import ResourceError, ToolError
 from mcp.types import ResourceTemplateReference
 
 from mcp_tailwindplus.server import create_server
-from mcp_tailwindplus.tailwind_plus import TailwindPlus
+from mcp_tailwindplus.tailwind_plus import (
+    Framework,
+    Mode,
+    TailwindPlus,
+    TailwindVersion,
+)
 
 
 @pytest.fixture
@@ -614,6 +619,40 @@ class TestResourceTemplateCompletion:
                 CODE_TEMPLATE, {"name": "mode", "value": typed}, context
             )
         assert completion.values == expected
+
+    @pytest.mark.asyncio
+    async def test_project_settings_are_offered_first(self, data_file, tmp_path):
+        """A client that preselects the first suggestion fills in the project's
+        settings."""
+        with TailwindPlus(data_file, cache_dir=str(tmp_path)) as tailwind_plus:
+            server = create_server(
+                tailwind_plus,
+                project_framework=Framework.REACT,
+                project_tailwind_version=TailwindVersion.V3,
+                project_mode=Mode.SYSTEM,
+            )
+            async with Client(server) as client:
+                framework = await client.complete(
+                    CODE_TEMPLATE, {"name": "framework", "value": ""}
+                )
+                tailwind_version = await client.complete(
+                    CODE_TEMPLATE, {"name": "tailwind_version", "value": ""}
+                )
+                themed_mode = await client.complete(
+                    CODE_TEMPLATE,
+                    {"name": "mode", "value": ""},
+                    {"product": "Marketing"},
+                )
+                ecommerce_mode = await client.complete(
+                    CODE_TEMPLATE,
+                    {"name": "mode", "value": ""},
+                    {"product": "Ecommerce"},
+                )
+
+        assert framework.values == ["react", "html", "vue"]
+        assert tailwind_version.values == ["3", "4"]
+        assert themed_mode.values == ["system", "light", "dark"]
+        assert ecommerce_mode.values == ["none"]
 
     @pytest.mark.asyncio
     async def test_other_template_gets_no_completions(self, mcp_server):

@@ -1,6 +1,7 @@
 import json
 import logging
 from dataclasses import asdict
+from enum import Enum
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig, ResourceCSP
@@ -19,8 +20,18 @@ __all__ = ["create_server"]
 logger = logging.getLogger(__name__)
 
 
-def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> FastMCP:
-    """Factory function to create server with TailwindPlus instance."""
+def create_server(
+    tailwind_plus_instance: TailwindPlus,
+    version: str = "",
+    project_framework: Framework | None = None,
+    project_tailwind_version: TailwindVersion | None = None,
+    project_mode: Mode | None = None,
+) -> FastMCP:
+    """Factory function to create server with TailwindPlus instance.
+
+    The project's framework, Tailwind version and mode, when given, are offered
+    first when clients complete resource template parameters.
+    """
 
     server = FastMCP(
         name="tailwindplus",
@@ -227,13 +238,17 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
                 if product
                 else list(Mode)
             )
-            choices = [mode.value for mode in modes]
+            choices = _project_value_first([mode.value for mode in modes], project_mode)
         elif argument.name == "framework":
-            choices = [framework.value for framework in Framework]
+            choices = _project_value_first(
+                [framework.value for framework in Framework], project_framework
+            )
         elif argument.name == "tailwind_version":
-            # Clients may preselect the first suggestion, so offer the current version first.
-            choices = sorted(
-                (version.value for version in TailwindVersion), reverse=True
+            # Clients may preselect the first suggestion, so without a project
+            # setting, offer the current version first.
+            choices = _project_value_first(
+                sorted((version.value for version in TailwindVersion), reverse=True),
+                project_tailwind_version,
             )
         else:
             return None
@@ -243,6 +258,16 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
     server.add_completion_handler(complete_component_argument)
 
     return server
+
+
+def _project_value_first(choices: list[str], project_value: Enum | None) -> list[str]:
+    """Move the project's setting to the front of the choices, so a client that
+    preselects the first suggestion fills it in."""
+    if project_value is None or project_value.value not in choices:
+        return choices
+    return [project_value.value] + [
+        choice for choice in choices if choice != project_value.value
+    ]
 
 
 def _matching_choices(choices: list[str], typed: str) -> list[str]:
