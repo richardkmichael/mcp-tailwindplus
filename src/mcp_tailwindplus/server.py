@@ -29,6 +29,10 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
         - eCommerce components: use mode 'none' only
         - Choose framework, version, and mode that match your project requirements
         """,
+        # Listings and reads never change while the server runs. The TTL bounds how
+        # long a client keeps results after a restart with a newer data file.
+        cache_ttl=3600,
+        cache_scope="public",
     )
 
     server.tool(

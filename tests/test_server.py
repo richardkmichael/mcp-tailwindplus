@@ -410,6 +410,17 @@ class TestMCPServerMetadata:
         assert "search" in search_tool.tags
         assert "components" in search_tool.tags
 
+    @pytest.mark.asyncio
+    async def test_cache_hints(self, mcp_server):
+        """Test that listings and reads carry public one-hour cache hints."""
+        async with Client(mcp_server) as client:
+            tools = await client.list_tools_mcp()
+            viewer = await client.read_resource_mcp("ui://tailwindplus/preview-viewer")
+
+        for result in (tools, viewer):
+            assert result.ttl_ms == 3_600_000
+            assert result.cache_scope == "public"
+
 
 class TestMCPAppsPreviewViewer:
     """Test MCP Apps preview viewer configuration."""
