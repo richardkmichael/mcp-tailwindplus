@@ -23,9 +23,6 @@ _PREVIEW_VIEWER_HTML = """\
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 <script src="https://cdn.jsdelivr.net/npm/@tailwindplus/elements@insiders" type="module"></script>
 <style id="tw-component-css"></style>
-<script src="/plus-assets/build/iframe/components.js?hash=25df7d34d043de1c316a31211aa744b1"></script>
-<link rel="modulepreload" href="https://tailwindcss.com/plus-assets/build/assets/iframe-BUCe_xEG.js" />
-<script type="module" src="https://tailwindcss.com/plus-assets/build/assets/iframe-BUCe_xEG.js"></script>
 <style>body {{ -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }}</style>
 <body>
 <div id="preview-container"></div>
@@ -33,6 +30,12 @@ _PREVIEW_VIEWER_HTML = """\
   import {{ App }} from "https://unpkg.com/@modelcontextprotocol/ext-apps@1.2.2/app-with-deps";
 
   const app = new App({{ name: "TailwindPlus Preview", version: "{mcp_server_version}" }});
+
+  // Keep placeholder links and forms in the preview from navigating the frame.
+  document.addEventListener("click", (event) => {{
+    if (event.target.closest('a[href="#"]')) event.preventDefault();
+  }}, {{ capture: true }});
+  document.addEventListener("submit", (event) => event.preventDefault());
 
   app.ontoolresult = ({{ content }}) => {{
     const text = content?.find(c => c.type === "text");

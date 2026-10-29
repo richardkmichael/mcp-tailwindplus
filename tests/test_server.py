@@ -452,6 +452,13 @@ class TestMCPAppsPreviewViewer:
         assert "tw-component-css" in html
 
     @pytest.mark.asyncio
+    async def test_preview_viewer_has_no_hashed_assets(self, mcp_server):
+        """The viewer loads no TailwindPlus build assets, whose hashed URLs stop
+        resolving when TailwindPlus rebuilds its site."""
+        result = await mcp_server.read_resource("ui://tailwindplus/preview-viewer")
+        assert "plus-assets" not in result.contents[0].content
+
+    @pytest.mark.asyncio
     async def test_preview_tool_has_app_config(self, mcp_server):
         """Test that the preview tool declares an app resource URI."""
         tools = await mcp_server.list_tools()
