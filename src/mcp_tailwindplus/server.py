@@ -49,6 +49,31 @@ IMPORTANT - Mode Requirements:
 - Choose framework, version, and mode that match your project requirements"""
 
 
+def _instructions(
+    project_framework: Framework | None,
+    project_tailwind_version: TailwindVersion | None,
+    project_mode: Mode | None,
+) -> str:
+    """Return the server instructions, naming the project's settings when given."""
+    settings = [
+        f"{label} '{setting.value}'"
+        for label, setting in (
+            ("framework", project_framework),
+            ("Tailwind CSS version", project_tailwind_version),
+            ("mode", project_mode),
+        )
+        if setting is not None
+    ]
+    if not settings:
+        return _INSTRUCTIONS
+    return (
+        f"{_INSTRUCTIONS}\n\n"
+        f"Project settings: this project uses {', '.join(settings)}. Use them when "
+        "retrieving components unless the user asks otherwise; eCommerce components "
+        "still use mode 'none'."
+    )
+
+
 def create_server(
     tailwind_plus_instance: TailwindPlus,
     version: str = "",
@@ -58,14 +83,17 @@ def create_server(
 ) -> FastMCP:
     """Factory function to create server with TailwindPlus instance.
 
-    The project's framework, Tailwind version and mode, when given, are offered
-    first when clients complete resource template parameters.
+    The project's framework, Tailwind version and mode, when given, are named in
+    the server instructions and offered first when clients complete resource
+    template parameters.
     """
 
     server = FastMCP(
         name="tailwindplus",
         version=version,
-        instructions=_INSTRUCTIONS,
+        instructions=_instructions(
+            project_framework, project_tailwind_version, project_mode
+        ),
         # Listings and reads never change while the server runs. The TTL bounds how
         # long a client keeps results after a restart with a newer data file.
         cache_ttl=3600,

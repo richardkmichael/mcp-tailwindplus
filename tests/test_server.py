@@ -301,6 +301,22 @@ class TestMCPServerMetadata:
         assert "search_component_names matches words" in mcp_server.instructions
         assert "exclamation triangle" in mcp_server.instructions
 
+    def test_instructions_name_project_settings(self, data_file, tmp_path):
+        with TailwindPlus(data_file, cache_dir=str(tmp_path)) as tailwind_plus:
+            server = create_server(
+                tailwind_plus,
+                project_framework=Framework.REACT,
+                project_tailwind_version=TailwindVersion.V4,
+                project_mode=Mode.SYSTEM,
+            )
+        assert (
+            "this project uses framework 'react', Tailwind CSS version '4', "
+            "mode 'system'"
+        ) in server.instructions
+
+    def test_instructions_without_project_settings(self, mcp_server):
+        assert "Project settings" not in mcp_server.instructions
+
     @pytest.mark.asyncio
     async def test_server_tools_exist(self, mcp_server):
         """Test that all expected tools are registered."""

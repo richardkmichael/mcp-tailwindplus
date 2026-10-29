@@ -12,20 +12,18 @@ An MCP (Model Context Protocol) server for TailwindPlus UI components.
 
 `claude mcp add tailwindplus uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest --tailwindplus-data /path/to/tailwindplus-components.json`
 
-4. Store your TailwindPlus settings in Claude's memory. This teaches Claude to use the tool and resource filters properly.
+4. Optionally, set your project's TailwindPlus settings by adding them to the command, for example
+   `--framework react --tailwind-version 4 --mode system`. The server tells Claude to use them, and
+   offers them first when completing resource URIs. See [Project Settings](#project-settings).
 
 ### Shared config (team)
 
-Add with project scope and set env `MCP_TAILWINDPLUS_DATA=/path/to/tailwindplus-components.json`:
+Add with project scope and the project's settings, and set env
+`MCP_TAILWINDPLUS_DATA=/path/to/tailwindplus-components.json`:
 
-`claude mcp add -s project tailwindplus uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest`
+`claude mcp add -s project tailwindplus uvx -- git+https://git@github.com/richardkmichael/mcp-tailwindplus@latest --framework react --tailwind-version 4 --mode system`
 
 This will allow `.mcp.json` to be commited to the repository, and but different component files can be used if necessary.
-
-```claude
-# Use TailwindPlus react for TailwindCSS v4
-  ⎿  Got it.
-```
 
 ## Other clients
 
@@ -172,7 +170,8 @@ Ask for code for a use-case, help with a sketch:
 Set the project's framework (`html`, `react`, `vue`), Tailwind CSS version (`3`, `4`), and theme
 mode (`light`, `dark`, `system`) with `--framework`, `--tailwind-version`, and `--mode`. When a
 client completes a resource URI, these values are offered first, so accepting the first suggestion
-for each fills in the project's settings. eCommerce components still complete to mode `none`.
+for each fills in the project's settings. The server's instructions also name them, so the model
+uses them when retrieving components. eCommerce components still use mode `none`.
 
 ## Available Tools
 
