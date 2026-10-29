@@ -2,7 +2,7 @@ import json
 
 import pytest
 from fastmcp import Client
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import ResourceError, ToolError
 
 from mcp_tailwindplus.server import create_server
 from mcp_tailwindplus.tailwind_plus import TailwindPlus
@@ -126,46 +126,6 @@ def mcp_server(data_file, tmp_path):
     test_tailwind_plus = TailwindPlus(data_file, cache_dir=str(tmp_path))
     yield create_server(test_tailwind_plus, version="0.0.0-test")
     test_tailwind_plus.close()
-
-
-@pytest.fixture
-def space_free_server(tmp_path):
-    """Server whose one component has a space-free full name, so it can be reached
-    by a raw (RFC 3986-valid) twplus:// URI without percent-encoding."""
-    data = {
-        "version": "twplus-read-1",
-        "downloaded_at": "2026-01-01T00:00:00.000Z",
-        "component_count": 1,
-        "download_duration": "0.1s",
-        "downloader_version": "3.0.0",
-        "tailwindplus": {
-            "AppUI": {
-                "Forms": {
-                    "InputGroups": {
-                        "Basic": {
-                            "name": "Basic",
-                            "snippets": [
-                                {
-                                    "code": "<input>",
-                                    "language": "html",
-                                    "mode": "light",
-                                    "name": "html",
-                                    "preview": "<div>BASIC-PREVIEW</div>",
-                                    "supportsDarkMode": False,
-                                    "version": 4,
-                                }
-                            ],
-                        }
-                    }
-                }
-            }
-        },
-    }
-    path = tmp_path / "twplus-data.json"
-    path.write_text(json.dumps(data))
-    tp = TailwindPlus(str(path), cache_dir=str(tmp_path))
-    yield create_server(tp, version="0.0.0-test")
-    tp.close()
 
 
 class TestMCPServerFunctionality:
@@ -481,29 +441,65 @@ class TestMCPAppsPreviewViewer:
         )
         assert preview_template.mime_type == "text/html"
 
-    @pytest.mark.asyncio
-    async def test_twplus_preview_resource_read(self, space_free_server):
-        """A concrete twplus:// preview URI binds its template variables to the
-        renamed handler parameters and returns the preview HTML."""
-        result = await space_free_server.read_resource(
-            "twplus://AppUI.Forms.InputGroups.Basic/html/4/light/preview"
-        )
-        assert result.contents[0].content == "<div>BASIC-PREVIEW</div>"
+
+COMPONENT_PATH = "twplus://components/Application UI/Forms/Input Groups/With icon"
+
+
+class TestComponentResources:
+    """Test the twplus:// component resource templates."""
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="get_component_as_resource returns a Component, which FastMCP "
-        "cannot serialize as resource contents; it should return JSON. Tracked for "
-        "the FastMCP resource review.",
-        strict=False,
+    async def test_templates(self, mcp_server):
+        templates = await mcp_server.list_resource_templates()
+        assert {str(t.uri_template) for t in templates} == {
+            "twplus://components/{product}/{category}/{subcategory}/{component}"
+            "/{framework}/{tailwind_version}/{mode}",
+            "twplus://components/{product}/{category}/{subcategory}/{component}"
+            "/{framework}/{tailwind_version}/{mode}/preview",
+        }
+
+    @pytest.mark.asyncio
+    async def test_read_code_as_json(self, mcp_server):
+        """The client percent-encodes the spaces in the name levels."""
+        async with Client(mcp_server) as client:
+            contents = await client.read_resource(f"{COMPONENT_PATH}/html/4/light")
+
+        component = json.loads(contents[0].text)
+        assert component["full_name"] == "Application UI.Forms.Input Groups.With icon"
+        assert component["framework"] == "html"
+        assert component["tailwind_version"] == "4"
+        assert component["mode"] == "light"
+        assert component["code"] == '<input class="form-input" type="text">'
+
+    @pytest.mark.asyncio
+    async def test_read_preview(self, mcp_server):
+        async with Client(mcp_server) as client:
+            contents = await client.read_resource(
+                f"{COMPONENT_PATH}/html/4/light/preview"
+            )
+        assert contents[0].text == "<div>Input with icon preview</div>"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("uri", "message"),
+        [
+            (f"{COMPONENT_PATH}/svelte/4/light", "'svelte' is not a valid Framework"),
+            (f"{COMPONENT_PATH}/html/5/light", "'5' is not a valid TailwindVersion"),
+            (
+                "twplus://components/Application UI/Forms/Input Groups/Missing/html/4/light",
+                "not found",
+            ),
+            (
+                "twplus://components/Ecommerce/Components/Product Lists/Simple/html/4/light",
+                "must use mode='none'",
+            ),
+            (f"{COMPONENT_PATH}/html/4/none", "cannot use mode='none'"),
+            (f"{COMPONENT_PATH}/html/4/none/preview", "cannot use mode='none'"),
+        ],
     )
-    async def test_twplus_code_resource_read(self, space_free_server):
-        """A concrete twplus:// code URI read (currently broken: the adapter returns
-        a Component that FastMCP cannot serialize)."""
-        result = await space_free_server.read_resource(
-            "twplus://AppUI.Forms.InputGroups.Basic/html/4/light"
-        )
-        assert result.contents[0].content
+    async def test_read_errors(self, mcp_server, uri, message):
+        with pytest.raises(ResourceError, match=message):
+            await mcp_server.read_resource(uri)
 
 
 class TestMCPServerIntegration:

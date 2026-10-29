@@ -174,18 +174,29 @@ Ask for code for a use-case, help with a sketch:
 
 ## Available Resources
 
-MCP resources provide direct URI access to components:
+MCP resources provide direct URI access to components. Each level of a component's dotted name is
+its own path segment:
 
-- `Component Code`: `twplus://{component_full_name}/{framework}/{version}`
-- `Component Preview`: `twplus://{component_full_name}/{framework}/{version}/preview`
+- `Component Code` (JSON):
+  `twplus://components/{product}/{category}/{subcategory}/{component}/{framework}/{tailwind_version}/{mode}`
+- `Component Preview` (HTML): the same URI followed by `/preview`
+
+For example, the HTML code of `Application UI.Forms.Input Groups.Label with leading icon` for
+Tailwind CSS 4 in light mode:
+
+```
+twplus://components/Application UI/Forms/Input Groups/Label with leading icon/html/4/light
+```
 
 ⚠️ **Note**: Resources require MCP clients that support "resource templates". Not all clients support this feature.
 
 ### Parameters
 
+- `product`, `category`, `subcategory`, `component`: The four levels of the component's dotted name
 - `framework`: `html`, `react`, or `vue`
-- `version`: `3` or `4` (Tailwind CSS version)
-- `component_full_name`: Dot-separated path (e.g., `Application UI.Forms.Input Groups.Label with leading icon`)
+- `tailwind_version`: `3` or `4` (Tailwind CSS version)
+- `mode`: `light`, `dark`, or `system` for Application UI and Marketing components; `none` for
+  Ecommerce components
 
 ## Component Organization
 

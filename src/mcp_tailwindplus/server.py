@@ -1,7 +1,16 @@
+import json
+from dataclasses import asdict
+
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig, ResourceCSP
 
-from .tailwind_plus import TailwindPlus, get_preview_viewer_html
+from .tailwind_plus import (
+    Framework,
+    Mode,
+    TailwindPlus,
+    TailwindVersion,
+    get_preview_viewer_html,
+)
 
 __all__ = ["create_server"]
 
@@ -111,20 +120,63 @@ def create_server(tailwind_plus_instance: TailwindPlus, version: str = "") -> Fa
         },
     )
 
-    server.resource(
-        "twplus://{full_name}/{framework}/{tailwind_version}/{mode}",
-        name="TailwindPlus Component Code",
-        description="Get component code by full name, framework, version and mode",
-        mime_type="application/json",
-        tags={"resource", "component", "code"},
-    )(tailwind_plus_instance.get_component_as_resource)
+    # Each level of a component's dotted name is its own URI path segment, so
+    # clients can complete the name one level at a time.
+    component_code_uri = (
+        "twplus://components/{product}/{category}/{subcategory}/{component}"
+        "/{framework}/{tailwind_version}/{mode}"
+    )
+    component_preview_uri = f"{component_code_uri}/preview"
+
+    def read_component_code(
+        product: str,
+        category: str,
+        subcategory: str,
+        component: str,
+        framework: str,
+        tailwind_version: str,
+        mode: str,
+    ) -> str:
+        """Return a component's code and metadata as JSON."""
+        found = tailwind_plus_instance.get_component_by_full_name(
+            ".".join((product, category, subcategory, component)),
+            Framework(framework),
+            TailwindVersion(tailwind_version),
+            Mode(mode),
+        )
+        return json.dumps(asdict(found), default=lambda enum: enum.value)
+
+    def read_component_preview(
+        product: str,
+        category: str,
+        subcategory: str,
+        component: str,
+        framework: str,
+        tailwind_version: str,
+        mode: str,
+    ) -> str:
+        """Return a component's preview HTML."""
+        return tailwind_plus_instance.get_component_preview_by_full_name(
+            ".".join((product, category, subcategory, component)),
+            Framework(framework),
+            TailwindVersion(tailwind_version),
+            Mode(mode),
+        )
 
     server.resource(
-        "twplus://{full_name}/{framework}/{tailwind_version}/{mode}/preview",
+        component_code_uri,
+        name="TailwindPlus Component Code",
+        description="Get component code as JSON",
+        mime_type="application/json",
+        tags={"resource", "component", "code"},
+    )(read_component_code)
+
+    server.resource(
+        component_preview_uri,
         name="TailwindPlus Component Preview",
-        description="Get component preview HTML by full name, framework, version and mode",
+        description="Get component preview HTML",
         mime_type="text/html",
         tags={"resource", "component", "preview"},
-    )(tailwind_plus_instance.get_component_preview_as_resource)
+    )(read_component_preview)
 
     return server

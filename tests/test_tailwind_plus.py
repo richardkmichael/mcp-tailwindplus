@@ -527,113 +527,6 @@ class TestErrorHandling:
         )
 
 
-class TestResourceAdapterMethods:
-    """Test the resource adapter methods."""
-
-    def test_get_component_as_resource(self, tailwind_plus_instance):
-        """Test getting component via resource adapter method."""
-        component = tailwind_plus_instance.get_component_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon",
-            "html",
-            "4",
-            "light",
-        )
-
-        assert isinstance(component, Component)
-        assert (
-            component.full_name
-            == "Application UI.Forms.Input Groups.Label with leading icon"
-        )
-        assert component.framework == Framework.HTML
-        assert component.tailwind_version == TailwindVersion.V4
-        assert "Email" in component.code
-
-    def test_get_component_as_resource_react(self, tailwind_plus_instance):
-        """Test getting React component via resource adapter method."""
-        component = tailwind_plus_instance.get_component_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon",
-            "react",
-            "4",
-            "light",
-        )
-
-        assert component.framework == Framework.REACT
-        assert component.language == Language.JSX
-
-    def test_get_component_preview_as_resource(self, tailwind_plus_instance):
-        """Test getting component preview via resource adapter method."""
-        preview = tailwind_plus_instance.get_component_preview_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon",
-            "html",
-            "4",
-            "light",
-        )
-
-        assert isinstance(preview, str)
-        assert "Email input preview" in preview
-
-    def test_get_component_as_resource_invalid_framework(self, tailwind_plus_instance):
-        """Test error handling for invalid framework."""
-        with pytest.raises(ValueError):
-            tailwind_plus_instance.get_component_as_resource(
-                "Application UI.Forms.Input Groups.Label with leading icon",
-                "invalidframework",
-                "4",
-                "light",
-            )
-
-    def test_get_component_as_resource_invalid_version(self, tailwind_plus_instance):
-        """Test error handling for invalid version."""
-        with pytest.raises(ValueError):
-            tailwind_plus_instance.get_component_as_resource(
-                "Application UI.Forms.Input Groups.Label with leading icon",
-                "html",
-                "99",
-                "light",
-            )
-
-    def test_get_component_as_resource_nonexistent_component(
-        self, tailwind_plus_instance
-    ):
-        """Test error handling for nonexistent component."""
-        with pytest.raises(ComponentNotFoundError):
-            tailwind_plus_instance.get_component_as_resource(
-                "Application UI.Forms.Nonexistent Component", "html", "4", "light"
-            )
-
-    def test_get_component_preview_as_resource_nonexistent_component(
-        self, tailwind_plus_instance
-    ):
-        """Test error handling for nonexistent component preview."""
-        with pytest.raises(ComponentNotFoundError):
-            tailwind_plus_instance.get_component_preview_as_resource(
-                "Application UI.Forms.Nonexistent Component", "html", "4", "light"
-            )
-
-    def test_direct_component_name_usage(self, tailwind_plus_instance):
-        """Test that resource adapter uses component names directly."""
-        # Resource adapter should accept dot-separated component names directly
-        component1 = tailwind_plus_instance.get_component_as_resource(
-            "Application UI.Forms.Input Groups.Label with leading icon",
-            "html",
-            "4",
-            "light",
-        )
-
-        # Compare with direct method call using dot notation
-        component2 = tailwind_plus_instance.get_component_by_full_name(
-            "Application UI.Forms.Input Groups.Label with leading icon",
-            Framework.HTML,
-            TailwindVersion.V4,
-            Mode.LIGHT,
-        )
-
-        # Should be identical
-        assert component1.full_name == component2.full_name
-        assert component1.code == component2.code
-        assert component1.framework == component2.framework
-
-
 class TestModeValidation:
     """Test mode validation logic for eCommerce vs non-eCommerce components."""
 
@@ -782,45 +675,6 @@ class TestModeValidation:
             in error_msg
         )
 
-    def test_ecommerce_resource_with_invalid_mode(self, tailwind_plus_instance):
-        """Test that eCommerce resource adapter rejects invalid modes."""
-        with pytest.raises(ValueError) as exc_info:
-            tailwind_plus_instance.get_component_as_resource(
-                "Ecommerce.Product Lists.Simple",
-                "html",
-                "4",
-                "light",
-            )
-
-        error_msg = str(exc_info.value)
-        assert (
-            "eCommerce component 'Ecommerce.Product Lists.Simple' must use mode='none'"
-            in error_msg
-        )
-        assert "Got mode='light'" in error_msg
-        assert "eCommerce components only support mode='none'" in error_msg
-
-    def test_non_ecommerce_resource_with_invalid_mode(self, tailwind_plus_instance):
-        """Test that non-eCommerce resource adapter rejects Mode.NONE."""
-        with pytest.raises(ValueError) as exc_info:
-            tailwind_plus_instance.get_component_as_resource(
-                "Application UI.Forms.Input Groups.Label with leading icon",
-                "html",
-                "4",
-                "none",
-            )
-
-        error_msg = str(exc_info.value)
-        assert (
-            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
-            in error_msg
-        )
-        assert "Got mode='none'" in error_msg
-        assert (
-            "Application UI and Marketing components support modes: 'light', 'dark', 'system'"
-            in error_msg
-        )
-
 
 class TestPreviewViewerHTML:
     """Test the MCP Apps preview viewer HTML template."""
@@ -910,45 +764,6 @@ class TestErrorMessageConsistency:
         assert "Got mode='system'" in preview_error
         assert "eCommerce components only support mode='none'" in preview_error
 
-    def test_resource_and_main_method_consistent_error_messages(
-        self, tailwind_plus_instance
-    ):
-        """Test that resource and main methods have consistent error message format."""
-        # Test main method
-        with pytest.raises(ValueError) as main_exc_info:
-            tailwind_plus_instance.get_component_by_full_name(
-                "Application UI.Forms.Input Groups.Label with leading icon",
-                Framework.HTML,
-                TailwindVersion.V4,
-                Mode.NONE,
-            )
-
-        # Test resource method
-        with pytest.raises(ValueError) as resource_exc_info:
-            tailwind_plus_instance.get_component_as_resource(
-                "Application UI.Forms.Input Groups.Label with leading icon",
-                "html",
-                "4",
-                "none",
-            )
-
-        main_error = str(main_exc_info.value)
-        resource_error = str(resource_exc_info.value)
-
-        # Both should contain client-friendly format
-        assert "mode='none'" in main_error
-        assert "mode='none'" in resource_error
-
-        # Both should contain similar structure (allowing for parameter naming differences)
-        assert (
-            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
-            in main_error
-        )
-        assert (
-            "Component 'Application UI.Forms.Input Groups.Label with leading icon' cannot use mode='none'"
-            in resource_error
-        )
-
     def test_all_validation_paths_use_client_friendly_format(
         self, tailwind_plus_instance
     ):
@@ -966,18 +781,6 @@ class TestErrorMessageConsistency:
                 "Ecommerce.Product Lists.Simple",
                 (Framework.HTML, TailwindVersion.V4, Mode.LIGHT),
                 "light",
-            ),
-            (
-                "get_component_as_resource",
-                "Ecommerce.Product Lists.Simple",
-                ("html", "4", "system"),
-                "system",
-            ),
-            (
-                "get_component_preview_as_resource",
-                "Ecommerce.Product Lists.Simple",
-                ("html", "4", "dark"),
-                "dark",
             ),
         ]
 
