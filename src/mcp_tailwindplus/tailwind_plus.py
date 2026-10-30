@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 _CACHE_FILE_PREFIX = "tailwindplus_components_cache_"
 
 # Bump when the cache's tables change, so caches built by older code are rebuilt.
-CACHE_FORMAT = "3"
+CACHE_FORMAT = "4"
 
 MAX_SEARCH_RESULTS = 50
 

@@ -917,14 +917,21 @@ class TestSQLiteCache:
         # Now cache should be stale due to size change
         assert TailwindPlus._cache_is_stale(cache_path, data_file)
 
-    def test_cache_from_older_format_is_stale(self, data_file, tmp_path):
-        """A cache built before the current cache format is rebuilt."""
+    @pytest.mark.parametrize("older_format", [None, "3"])
+    def test_cache_from_older_format_is_stale(self, data_file, tmp_path, older_format):
+        """A cache built before the current cache format is rebuilt, whether
+        it records no format, as caches from 2.x do, or an older one."""
         cache_dir = str(tmp_path / "cache")
         TailwindPlus(data_file, cache_dir=cache_dir).close()
         cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
 
         db = sqlite3.connect(cache_path)
         db.execute("DELETE FROM metadata WHERE key = 'cache_format'")
+        if older_format is not None:
+            db.execute(
+                "INSERT INTO metadata (key, value) VALUES ('cache_format', ?)",
+                (older_format,),
+            )
         db.commit()
         db.close()
 
