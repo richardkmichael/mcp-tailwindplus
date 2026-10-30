@@ -206,7 +206,7 @@ class TailwindPlus:
         elif build_in_background:
             self._start_build_process(data_file)
         else:
-            self._build(data_file, self._read_data_file(data_file))
+            self._build(data_file, *self._read_data_file(data_file))
             self._open_cache()
 
     def _init_state(self, cache_path: str) -> None:
@@ -229,12 +229,12 @@ class TailwindPlus:
         builder._init_state(cache_path)
         return builder
 
-    def _build(self, data_file: str, raw_data: dict) -> None:
+    def _build(self, data_file: str, raw_data: dict, data_stat: os.stat_result) -> None:
         """Build the cache unless another server built it meanwhile."""
         with _build_lock(self._cache_path):
             # Another server may have built the cache while this one waited.
             if self._cache_is_stale(self._cache_path, data_file):
-                self._build_cache(data_file, raw_data)
+                self._build_cache(data_file, raw_data, data_stat)
                 self._remove_stale_caches(self._cache_path)
 
     def _start_build_process(self, data_file: str) -> None:
@@ -454,9 +454,15 @@ class TailwindPlus:
                 db.close()
 
     @staticmethod
-    def _read_data_file(data_file: str) -> dict:
+    def _read_data_file(data_file: str) -> tuple[dict, os.stat_result]:
         """Parse the data file, checking that its downloader version is
-        supported."""
+        supported, and return it with the file's status as read.
+
+        The status is taken before reading, so a file replaced while it is read
+        or while the cache builds is never mistaken for the one read: its cache
+        records the earlier status and is rebuilt.
+        """
+        data_stat = os.stat(data_file)
         # The data file is hundreds of megabytes; orjson parses it about three
         # times faster than the json module.
         raw_data = orjson.loads(Path(data_file).read_bytes())
@@ -466,9 +472,11 @@ class TailwindPlus:
                 f"TailwindPlus data requires downloader version >= 3.0.0-rc1 for mode support. "
                 f"Found version {downloader_version}. Please regenerate the data file with a newer downloader version."
             )
-        return raw_data
+        return raw_data, data_stat
 
-    def _build_cache(self, data_file: str, raw_data: dict) -> None:
+    def _build_cache(
+        self, data_file: str, raw_data: dict, data_stat: os.stat_result
+    ) -> None:
         """Build the SQLite cache from the parsed data file."""
         cache_path = self._cache_path
         # Build into a new file that replaces the cache only once complete, so
@@ -500,7 +508,7 @@ class TailwindPlus:
             self._populate_db(
                 raw_data["tailwindplus"], raw_data.get("descriptions", {})
             )
-            self._store_metadata(data_file, raw_data)
+            self._store_metadata(data_file, raw_data, data_stat)
             self._build_db.commit()
             self._build_db.close()
             # Without the journal or syncing, the file's pages may reach the
@@ -756,14 +764,16 @@ class TailwindPlus:
             snippet_rows,
         )
 
-    def _store_metadata(self, data_file: str, raw_data: dict) -> None:
-        """Store metadata in the DB including source file stats for staleness checks."""
-        stat = os.stat(data_file)
+    def _store_metadata(
+        self, data_file: str, raw_data: dict, data_stat: os.stat_result
+    ) -> None:
+        """Store metadata in the DB including the data file's status as read,
+        for staleness checks."""
         metadata = {
             "cache_format": CACHE_FORMAT,
             "source_file": os.path.abspath(data_file),
-            "source_mtime": str(stat.st_mtime),
-            "source_size": str(stat.st_size),
+            "source_mtime": str(data_stat.st_mtime),
+            "source_size": str(data_stat.st_size),
             "version": raw_data["version"],
             "downloaded_at": raw_data["downloaded_at"],
             "component_count": str(raw_data["component_count"]),
@@ -1263,13 +1273,13 @@ def _build_in_process(
     _exit_with_parent(parent_pid)
     builder = TailwindPlus._builder(cache_path)
     try:
-        raw_data = TailwindPlus._read_data_file(data_file)
+        raw_data, data_stat = TailwindPlus._read_data_file(data_file)
     except Exception as error:
         _send_build_report(reports, error)
         return
     _send_build_report(reports, None)
     try:
-        builder._build(data_file, raw_data)
+        builder._build(data_file, raw_data, data_stat)
     except Exception as error:
         _send_build_report(reports, error)
         return

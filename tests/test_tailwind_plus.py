@@ -613,6 +613,28 @@ class TestSQLiteCache:
 
         assert parallel == serial
 
+    def test_data_file_replaced_during_build_is_rebuilt_next(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """A data file replaced after it is read leaves a cache recording the
+        file as read, so the next start rebuilds it."""
+        read_data_file = TailwindPlus._read_data_file
+
+        def read_then_replace(path):
+            read = read_data_file(path)
+            with open(path, "a") as file:
+                file.write(" ")
+            return read
+
+        monkeypatch.setattr(
+            TailwindPlus, "_read_data_file", staticmethod(read_then_replace)
+        )
+        cache_dir = str(tmp_path / "cache")
+        TailwindPlus(data_file, cache_dir=cache_dir).close()
+
+        cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
+        assert TailwindPlus._cache_is_stale(cache_path, data_file)
+
     def test_build_removes_files_of_killed_builds(self, data_file, tmp_path):
         """A build killed before it could clean up leaves its partial file;
         the next build removes it."""
