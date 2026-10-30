@@ -206,7 +206,7 @@ class TailwindPlus:
         elif build_in_background:
             self._start_build_process(data_file)
         else:
-            self._build(data_file, *self._read_data_file(data_file))
+            self._build(data_file)
             self._open_cache()
 
     def _init_state(self, cache_path: str) -> None:
@@ -229,13 +229,23 @@ class TailwindPlus:
         builder._init_state(cache_path)
         return builder
 
-    def _build(self, data_file: str, raw_data: dict, data_stat: os.stat_result) -> None:
-        """Build the cache unless another server built it meanwhile."""
+    def _build(
+        self, data_file: str, on_data_read: Callable[[], None] = lambda: None
+    ) -> None:
+        """Build the cache from the data file, calling on_data_read once the
+        file is read and checked, unless another server built the cache while
+        this one waited for the lock.
+
+        The lock is taken before the file is read, so servers starting at once
+        read the file only once.
+        """
         with _build_lock(self._cache_path):
-            # Another server may have built the cache while this one waited.
-            if self._cache_is_stale(self._cache_path, data_file):
-                self._build_cache(data_file, raw_data, data_stat)
-                self._remove_stale_caches(self._cache_path)
+            if not self._cache_is_stale(self._cache_path, data_file):
+                return
+            raw_data, data_stat = self._read_data_file(data_file)
+            on_data_read()
+            self._build_cache(data_file, raw_data, data_stat)
+            self._remove_stale_caches(self._cache_path)
 
     def _start_build_process(self, data_file: str) -> None:
         """Start a process that builds the cache, wait for it to report that
@@ -1267,22 +1277,27 @@ def _build_in_process(
 ) -> None:
     """Build a cache, run in the process the server starts for it.
 
-    It reports to the server twice, once the data file is read and checked
-    and once the cache is built: None for success, or the exception.
+    It reports to the server twice: once the data file is read and checked,
+    or found built by another server, and once the cache is built. Each
+    report is None for success, or the exception.
     """
     _exit_with_parent(parent_pid)
     builder = TailwindPlus._builder(cache_path)
+    data_read = False
+
+    def report_data_read() -> None:
+        nonlocal data_read
+        _send_build_report(reports, None)
+        data_read = True
+
     try:
-        raw_data, data_stat = TailwindPlus._read_data_file(data_file)
+        builder._build(data_file, report_data_read)
     except Exception as error:
         _send_build_report(reports, error)
         return
-    _send_build_report(reports, None)
-    try:
-        builder._build(data_file, raw_data, data_stat)
-    except Exception as error:
-        _send_build_report(reports, error)
-        return
+    if not data_read:
+        # Another server built the cache from the same, valid, data file.
+        _send_build_report(reports, None)
     _send_build_report(reports, None)
 
 

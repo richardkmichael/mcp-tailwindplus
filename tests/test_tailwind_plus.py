@@ -677,11 +677,21 @@ class TestSQLiteCache:
     def test_servers_starting_at_once_build_once(
         self, data_file, tmp_path, monkeypatch
     ):
-        """Instances created at once with a stale cache build it once; the
-        others wait for it and open it."""
+        """Instances created at once with a stale cache read the data file and
+        build the cache once; the others wait for it and open it."""
         build_cache = TailwindPlus._build_cache
         builds = []
         both_started = threading.Barrier(2)
+        read_data_file = TailwindPlus._read_data_file
+        reads = []
+
+        def counted_read_data_file(path):
+            reads.append(path)
+            return read_data_file(path)
+
+        monkeypatch.setattr(
+            TailwindPlus, "_read_data_file", staticmethod(counted_read_data_file)
+        )
 
         def slow_build_cache(self, *args):
             builds.append(threading.get_ident())
@@ -699,6 +709,7 @@ class TestSQLiteCache:
             names = list(pool.map(lambda _: start(), range(2)))
 
         assert len(builds) == 1
+        assert len(reads) == 1
         assert names[0] == names[1] != []
 
     @pytest.mark.parametrize("failure", ["cannot start", "breaks", "breaks partway"])
