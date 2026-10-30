@@ -56,8 +56,8 @@ Claude Desktop requires HTTPS for HTTP-based MCP servers and does not permit
 localhost URLs. Use [ngrok](https://ngrok.com/) to expose the server:
 
 ```bash
-# Terminal 1: start the MCP server over HTTP
-mcp-tailwindplus --transport http
+# Terminal 1: start the MCP server over HTTP, accepting requests the tunnel forwards
+mcp-tailwindplus --transport http --allowed-host '*.ngrok-free.app'
 
 # Terminal 2: tunnel via ngrok (terminates TLS at its edge)
 ngrok http 8000
@@ -66,7 +66,12 @@ ngrok http 8000
 Then add the ngrok URL (`https://<id>.ngrok-free.app/mcp`) as a custom
 connector in Claude Desktop (Settings > Connectors > Add custom connector).
 
-ngrok handles TLS termination, so the MCP server itself runs plain HTTP.
+ngrok handles TLS termination, so the MCP server itself runs plain HTTP. Over HTTP, the server
+rejects requests naming a host other than its bind address, `localhost`, or a host given with
+`--allowed-host`, so a web page cannot reach it through DNS rebinding.
+
+The tunnel makes the server, and so your licensed TailwindPlus components, reachable by anyone who
+has the URL, without authentication. Stop the tunnel when you are done.
 
 Claude Desktop also supports MCP Apps, which renders component previews
 visually in the conversation (rather than returning raw HTML). This activates

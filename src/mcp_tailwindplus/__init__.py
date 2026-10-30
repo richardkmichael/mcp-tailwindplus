@@ -51,6 +51,15 @@ def main():
         help="HTTP server port (default: 8000)",
     )
     parser.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+        metavar="HOST",
+        help="A hostname, or a pattern such as '*.ngrok-free.app', that HTTP "
+        "requests may name in their Host header besides the bind address, as a "
+        "tunnel or proxy in front of the server does; may be repeated",
+    )
+    parser.add_argument(
         "--clear-cache",
         action="store_true",
         help="Remove all cached component databases and exit",
@@ -145,6 +154,11 @@ def main():
                     host=args.host,
                     port=args.port,
                     show_banner=False,
+                    # Reject requests naming another host or a foreign browser
+                    # origin, so a web page cannot reach a localhost server
+                    # through DNS rebinding.
+                    host_origin_protection="auto",
+                    allowed_hosts=[args.host, "localhost", *args.allowed_host],
                 )
             else:
                 mcp_server.run(show_banner=False)

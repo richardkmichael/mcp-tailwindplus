@@ -1,8 +1,11 @@
 import argparse
+import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -126,3 +129,108 @@ class TestProjectSetting:
     def test_unset(self, monkeypatch):
         monkeypatch.delenv(self.ENV_NAME, raising=False)
         assert self._resolve(None) is None
+
+
+@pytest.fixture
+def data_file(tmp_path):
+    """A small valid data file."""
+    path = tmp_path / "data.json"
+    snippet = {
+        "code": '<div class="flex">Hello</div>',
+        "language": "html",
+        "mode": "light",
+        "name": "html",
+        "preview": "<div>Hello</div>",
+        "supportsDarkMode": False,
+        "version": 4,
+    }
+    path.write_text(
+        json.dumps(
+            {
+                "version": "x",
+                "downloaded_at": "x",
+                "component_count": 1,
+                "download_duration": "x",
+                "downloader_version": "4.0.0",
+                "tailwindplus": {
+                    "Application UI": {
+                        "Elements": {
+                            "Badges": {
+                                "Simple": {"name": "Simple", "snippets": [snippet]}
+                            }
+                        }
+                    }
+                },
+            }
+        )
+    )
+    return str(path)
+
+
+def test_http_rejects_other_hosts_and_origins(data_file):
+    """Over HTTP, requests naming a host other than the bind address or an
+    allowed host, or a foreign browser origin, are rejected."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "from mcp_tailwindplus import main; main()",
+            "--tailwindplus-data",
+            data_file,
+            "--transport",
+            "http",
+            "--port",
+            str(port),
+            "--allowed-host",
+            "*.example.net",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    def status(host, origin=None):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        connection.putrequest("POST", "/mcp", skip_host=True)
+        connection.putheader("Host", host)
+        if origin:
+            connection.putheader("Origin", origin)
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1"},
+                },
+            }
+        ).encode()
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Accept", "application/json, text/event-stream")
+        connection.putheader("Content-Length", str(len(body)))
+        try:
+            connection.endheaders(body)
+            return connection.getresponse().status
+        finally:
+            connection.close()
+
+    try:
+        for _ in range(100):
+            try:
+                status(f"127.0.0.1:{port}")
+                break
+            except OSError:
+                time.sleep(0.1)
+
+        assert status(f"127.0.0.1:{port}") == 200
+        assert status(f"localhost:{port}") == 200
+        assert status("tunnel.example.net") == 200
+        assert status("attacker.example") == 421
+        assert status(f"localhost:{port}", origin="http://attacker.example") == 403
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
