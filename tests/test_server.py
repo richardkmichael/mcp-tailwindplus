@@ -343,6 +343,8 @@ class TestMCPServerMetadata:
 
     def test_instructions_describe_searching(self, mcp_server):
         assert "search_component_names matches words" in mcp_server.instructions
+        assert "Results must match" in mcp_server.instructions
+        assert "list the branch a result belongs to" in mcp_server.instructions
         assert "exclamation triangle" in mcp_server.instructions
 
     def test_instructions_name_project_settings(self, data_file, tmp_path):

@@ -56,8 +56,12 @@ Searching:
   headings), named parts (icons, UI components, HTML elements, labeled sections such as
   'Mobile menu'), and category descriptions. Each result includes the component's text, so you
   can choose a component without retrieving its code.
-- Search with the words a component shows or is built from, such as 'pricing table' or
-  'profile dropdown'.
+- Search with the kind of component, or the words it shows or is built from, such as 'footer',
+  'avatar' or 'pricing table', and add words only to narrow the results. Results must match
+  every word unless no component does, so a description such as 'footer links copyright' can
+  miss the components it describes.
+- To see every component of a kind, list the branch a result belongs to with
+  list_component_names, such as 'Marketing.Page Sections.Footers'.
 - Icons are named by their shape, not their meaning: search 'exclamation triangle' for a
   warning icon.
 - search_components_by_code finds the components code was copied from, by its classes and
