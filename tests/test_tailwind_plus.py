@@ -598,13 +598,14 @@ class TestSQLiteCache:
 
         def contents(cache_dir):
             with TailwindPlus(data_file, cache_dir=str(cache_dir)) as tailwind_plus:
-                return {
-                    "token snippets": sorted(token_snippets(tailwind_plus._db)),
-                    **{
-                        name: sorted(map(tuple, tailwind_plus._db.execute(query)))
-                        for name, query in queries.items()
-                    },
-                }
+                with tailwind_plus._reading() as db:
+                    return {
+                        "token snippets": sorted(token_snippets(db)),
+                        **{
+                            name: sorted(map(tuple, db.execute(query)))
+                            for name, query in queries.items()
+                        },
+                    }
 
         serial = contents(tmp_path / "serial")
         monkeypatch.setattr(tailwind_plus, "_PARALLEL_PARSING_MIN_SNIPPETS", 1)
@@ -758,8 +759,8 @@ class TestSQLiteCache:
         with TailwindPlus(data_file, cache_dir=str(tmp_path)) as tp:
             assert tp.list_component_names()
 
-        with pytest.raises(sqlite3.ProgrammingError):
-            tp._db.execute("SELECT 1")
+        with pytest.raises(sqlite3.ProgrammingError), tp._reading() as db:
+            db.execute("SELECT 1")
 
     def test_concurrent_reads(self, tailwind_plus_instance):
         """Calls from many threads at once, as FastMCP makes them, return what
@@ -789,10 +790,67 @@ class TestSQLiteCache:
 
         assert concurrently == one_at_a_time
 
+    def test_connections_are_fixed_in_number(self, data_file, tmp_path, monkeypatch):
+        """Calls from ever new threads, as FastMCP's worker threads come and
+        go, reuse the connections opened with the cache."""
+        connect_readonly = TailwindPlus._connect_readonly
+        opened = []
+
+        def counted_connect_readonly(cache_path):
+            opened.append(cache_path)
+            return connect_readonly(cache_path)
+
+        monkeypatch.setattr(
+            TailwindPlus, "_connect_readonly", staticmethod(counted_connect_readonly)
+        )
+        with TailwindPlus(data_file, cache_dir=str(tmp_path)) as tailwind_plus:
+            connections_when_open = len(opened)
+            for _ in range(50):
+                thread = threading.Thread(
+                    target=tailwind_plus.search_component_names, args=("email",)
+                )
+                thread.start()
+                thread.join()
+
+            assert len(opened) == connections_when_open
+
+    @pytest.mark.parametrize("change", ["removed", "replaced"])
+    def test_open_cache_survives_its_file_changing(
+        self, data_file, sample_data, tmp_path, change
+    ):
+        """Another server may remove the cache, or rebuild it for a changed
+        data file; an open instance keeps reading the cache it opened."""
+        cache_dir = str(tmp_path / "cache")
+        with TailwindPlus(data_file, cache_dir=cache_dir) as tailwind_plus:
+            cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
+            if change == "removed":
+                os.remove(cache_path)
+            else:
+                del sample_data["tailwindplus"]["Ecommerce"]
+                with open(data_file, "w") as file:
+                    json.dump(sample_data, file)
+                TailwindPlus(data_file, cache_dir=cache_dir).close()
+
+            # A new thread, as FastMCP's worker threads come and go.
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                found = pool.submit(tailwind_plus.search_component_names, "purchased")
+                component = pool.submit(
+                    tailwind_plus.get_component_by_full_name,
+                    "Ecommerce.Product Lists.Simple",
+                    Framework.HTML,
+                    TailwindVersion.V4,
+                    Mode.NONE,
+                )
+                assert found.result()
+                assert component.result()
+
     def test_connection_is_read_only(self, tailwind_plus_instance):
         """The cache connection rejects writes but still serves reads."""
-        with pytest.raises(sqlite3.OperationalError):
-            tailwind_plus_instance._db.execute("CREATE TABLE should_not_exist (x)")
+        with (
+            pytest.raises(sqlite3.OperationalError),
+            tailwind_plus_instance._reading() as db,
+        ):
+            db.execute("CREATE TABLE should_not_exist (x)")
 
         assert tailwind_plus_instance.list_component_names()
 

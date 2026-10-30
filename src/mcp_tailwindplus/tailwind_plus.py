@@ -5,6 +5,7 @@ import logging
 import math
 import multiprocessing
 import os
+import queue
 import re
 import sqlite3
 import tempfile
@@ -59,6 +60,10 @@ _SEARCH_COLUMN_WEIGHTS = (10.0, 5.0, 2.0, 1.0)
 
 # Separates prose fragments and parts in the search index.
 _TEXT_SEPARATOR = "\n"
+
+# Read-only connections to an open cache, each lent to one call at a time.
+# Calls take milliseconds, so a few serve FastMCP's worker threads.
+_READ_CONNECTIONS = 4
 
 # Snippet ids in the structure index are packed as unsigned 32-bit integers, in
 # the machine's byte order; caches are built and read on the same machine.
@@ -206,9 +211,11 @@ class TailwindPlus:
 
     def _init_state(self, cache_path: str) -> None:
         self._cache_path = cache_path
-        self._thread = threading.local()
-        self._connections: list[sqlite3.Connection] = []
-        self._connections_lock = threading.Lock()
+        self._build_db: sqlite3.Connection | None = None
+        self._read_connections: list[sqlite3.Connection] = []
+        self._idle_read_connections: queue.SimpleQueue[sqlite3.Connection] = (
+            queue.SimpleQueue()
+        )
         self._opened = threading.Event()
         self._open_error: BaseException | None = None
         self._open_callbacks: list[Callable[[], None]] = []
@@ -273,8 +280,12 @@ class TailwindPlus:
         process.join()
 
     def _open_cache(self) -> None:
-        """Load the cache's metadata and component names, then run the
-        callbacks waiting for the cache to open."""
+        """Open the cache's read-only connections, load its metadata and
+        component names, then run the callbacks waiting for it to open."""
+        for _ in range(_READ_CONNECTIONS):
+            db = self._connect_readonly(self._cache_path)
+            self._read_connections.append(db)
+            self._idle_read_connections.put(db)
         self._load_metadata_from_db()
         self._component_names = self._load_component_names()
         with self._open_lock:
@@ -307,31 +318,29 @@ class TailwindPlus:
                 f"The TailwindPlus cache could not be built: {self._open_error}"
             ) from self._open_error
 
-    @property
-    def _db(self) -> sqlite3.Connection:
-        """The calling thread's connection to the cache.
+    @contextmanager
+    def _reading(self) -> Iterator[sqlite3.Connection]:
+        """Lend the caller one of the cache's read-only connections.
 
         FastMCP runs tool calls in worker threads. The sqlite3 module reuses a
-        connection's prepared statements, so calls sharing one connection can
-        step the same statement at once and return each other's rows; each
-        thread opens its own connection instead.
+        connection's prepared statements, so calls sharing a connection at once
+        can step the same statement and return each other's rows; each call
+        borrows a connection of its own, waiting if all are lent. The
+        connections are opened once, so their number stays fixed however many
+        threads call, and they keep reading the cache file they opened even if
+        another server replaces or removes it.
         """
-        db = getattr(self._thread, "db", None)
-        if db is None:
-            db = self._connect_readonly(self._cache_path)
-            with self._connections_lock:
-                self._connections.append(db)
-            self._thread.db = db
-        return db
+        db = self._idle_read_connections.get()
+        try:
+            yield db
+        finally:
+            self._idle_read_connections.put(db)
 
     def close(self) -> None:
-        """Close the SQLite database connections of every thread."""
+        """Close the cache's read-only connections."""
         # An instance whose construction failed early has no connections.
-        if not hasattr(self, "_connections_lock"):
-            return
-        with self._connections_lock:
-            for db in self._connections:
-                db.close()
+        for db in getattr(self, "_read_connections", []):
+            db.close()
 
     def __enter__(self) -> "TailwindPlus":
         return self
@@ -346,8 +355,9 @@ class TailwindPlus:
     def _connect_readonly(cache_path: str) -> sqlite3.Connection:
         """Open the cache database read-only so any write raises instead of proceeding.
 
-        Each thread has its own connection; opening read-only makes the
-        read-only assumption explicit and enforced.
+        The connections are lent to one call at a time, from any thread (see
+        _reading); opening read-only makes the read-only assumption explicit
+        and enforced.
         """
         uri = f"{Path(cache_path).absolute().as_uri()}?mode=ro"
         db = sqlite3.connect(uri, uri=True, check_same_thread=False)
@@ -477,24 +487,22 @@ class TailwindPlus:
             suffix=".building",
         )
         os.close(build_fd)
-        # The building thread's connection writes the new file; the build's
-        # methods reach it as self._db.
-        self._thread.db = sqlite3.connect(build_path)
+        self._build_db = sqlite3.connect(build_path)
         try:
-            self._db.row_factory = sqlite3.Row
+            self._build_db.row_factory = sqlite3.Row
             # Large pages cut the writes of the build's large rows of code and
             # previews by more than half, for a cache about 8% larger.
-            self._db.execute("PRAGMA page_size = 65536")
-            self._db.execute("PRAGMA journal_mode = OFF")
-            self._db.execute("PRAGMA synchronous = OFF")
+            self._build_db.execute("PRAGMA page_size = 65536")
+            self._build_db.execute("PRAGMA journal_mode = OFF")
+            self._build_db.execute("PRAGMA synchronous = OFF")
             self._create_tables()
             # Data from downloaders before 4.0.0 has no descriptions.
             self._populate_db(
                 raw_data["tailwindplus"], raw_data.get("descriptions", {})
             )
             self._store_metadata(data_file, raw_data)
-            self._db.commit()
-            self._db.close()
+            self._build_db.commit()
+            self._build_db.close()
             # Without the journal or syncing, the file's pages may reach the
             # disk after the rename does; a crash in between would leave a cache
             # with its metadata but not all its pages.
@@ -502,16 +510,16 @@ class TailwindPlus:
                 os.fsync(build_file.fileno())
             os.replace(build_path, cache_path)
         except BaseException:
-            self._db.close()
+            self._build_db.close()
             os.remove(build_path)
             raise
         finally:
             # All further access is reads, through read-only connections.
-            del self._thread.db
+            self._build_db = None
 
     def _create_tables(self) -> None:
         """Create the SQLite tables."""
-        self._db.execute(
+        self._build_db.execute(
             """
             CREATE TABLE IF NOT EXISTS metadata (
                 key TEXT PRIMARY KEY,
@@ -521,7 +529,7 @@ class TailwindPlus:
         )
         # A component's frameworks share its previews, so each distinct preview
         # is stored once.
-        self._db.execute(
+        self._build_db.execute(
             """
             CREATE TABLE IF NOT EXISTS previews (
                 id INTEGER PRIMARY KEY,
@@ -529,7 +537,7 @@ class TailwindPlus:
             )
             """
         )
-        self._db.execute(
+        self._build_db.execute(
             """
             CREATE TABLE IF NOT EXISTS snippets (
                 full_name TEXT NOT NULL,
@@ -548,7 +556,7 @@ class TailwindPlus:
         # structure tokens, and each token with its weight per framework and the
         # snippets having it. Snippet rows hold code and previews, so the index
         # has its own narrow snippet table to keep matching fast.
-        self._db.execute(
+        self._build_db.execute(
             """
             CREATE TABLE IF NOT EXISTS structure_snippets (
                 id INTEGER PRIMARY KEY,
@@ -560,7 +568,7 @@ class TailwindPlus:
             )
             """
         )
-        self._db.execute(
+        self._build_db.execute(
             """
             CREATE TABLE IF NOT EXISTS structure_tokens (
                 id INTEGER PRIMARY KEY,
@@ -577,7 +585,7 @@ class TailwindPlus:
         )
         # One row per component. The porter tokenizer stems words, so "dropdowns"
         # matches "dropdown".
-        self._db.execute(
+        self._build_db.execute(
             """
             CREATE VIRTUAL TABLE IF NOT EXISTS component_search USING fts5(
                 full_name, parts, description, prose,
@@ -621,13 +629,13 @@ class TailwindPlus:
             for full_name, snippet in snippets:
                 preview_id = preview_ids.get(snippet["preview"])
                 if preview_id is None:
-                    preview_id = self._db.execute(
+                    preview_id = self._build_db.execute(
                         "INSERT INTO previews (html) VALUES (?)",
                         (snippet["preview"],),
                     ).lastrowid
                     preview_ids[snippet["preview"]] = preview_id
 
-                self._db.execute(
+                self._build_db.execute(
                     """
                     INSERT INTO snippets
                         (full_name, framework, tailwind_version, mode,
@@ -677,7 +685,7 @@ class TailwindPlus:
             if text
         )
 
-        self._db.execute(
+        self._build_db.execute(
             """
             INSERT INTO component_search (full_name, parts, description, prose)
             VALUES (?, ?, ?, ?)
@@ -730,7 +738,7 @@ class TailwindPlus:
             framework_weights = weights[row[2]]
             row.append(sum(framework_weights[token] for token in tokens))
 
-        self._db.executemany(
+        self._build_db.executemany(
             "INSERT INTO structure_tokens (framework, token, weight, snippet_ids) "
             "VALUES (?, ?, ?, ?)",
             (
@@ -739,7 +747,7 @@ class TailwindPlus:
                 for token, snippet_ids in framework_snippet_ids.items()
             ),
         )
-        self._db.executemany(
+        self._build_db.executemany(
             """
             INSERT INTO structure_snippets
                 (id, full_name, framework, tailwind_version, mode, weight)
@@ -763,14 +771,15 @@ class TailwindPlus:
             "downloader_version": raw_data["downloader_version"],
         }
         for key, value in metadata.items():
-            self._db.execute(
+            self._build_db.execute(
                 "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
                 (key, value),
             )
 
     def _load_metadata_from_db(self) -> None:
         """Load metadata from the DB into instance attributes."""
-        rows = self._db.execute("SELECT key, value FROM metadata").fetchall()
+        with self._reading() as db:
+            rows = db.execute("SELECT key, value FROM metadata").fetchall()
         meta = {row["key"]: row["value"] for row in rows}
         self.version = meta["version"]
         self.downloaded_at = meta["downloaded_at"]
@@ -780,7 +789,8 @@ class TailwindPlus:
 
     def _load_component_names(self) -> set[str]:
         """Load distinct component names from the DB."""
-        rows = self._db.execute("SELECT DISTINCT full_name FROM snippets").fetchall()
+        with self._reading() as db:
+            rows = db.execute("SELECT DISTINCT full_name FROM snippets").fetchall()
         return {row["full_name"] for row in rows}
 
     def _get_snippet(
@@ -791,14 +801,15 @@ class TailwindPlus:
         mode: Mode,
     ) -> dict | None:
         """Retrieve a single snippet from the DB."""
-        row = self._db.execute(
-            """
-            SELECT snippets.*, previews.html AS preview
-            FROM snippets JOIN previews ON previews.id = snippets.preview_id
-            WHERE full_name=? AND framework=? AND tailwind_version=? AND mode=?
-            """,
-            (full_name, framework.value, tailwind_version.value, mode.value),
-        ).fetchone()
+        with self._reading() as db:
+            row = db.execute(
+                """
+                SELECT snippets.*, previews.html AS preview
+                FROM snippets JOIN previews ON previews.id = snippets.preview_id
+                WHERE full_name=? AND framework=? AND tailwind_version=? AND mode=?
+                """,
+                (full_name, framework.value, tailwind_version.value, mode.value),
+            ).fetchone()
         return dict(row) if row else None
 
     def _suggestions_for_component_name(
@@ -935,21 +946,22 @@ class TailwindPlus:
             return []
 
         for operator in (" AND ", " OR "):
-            rows = self._db.execute(
-                f"""
-                SELECT
-                    full_name,
-                    parts,
-                    prose,
-                    highlight(component_search, 2, '{_MATCH_START}', '{_MATCH_END}')
-                        AS description
-                FROM component_search
-                WHERE component_search MATCH ?
-                ORDER BY bm25(component_search, {", ".join(map(str, _SEARCH_COLUMN_WEIGHTS))})
-                LIMIT ?
-                """,
-                (operator.join(terms), limit),
-            ).fetchall()
+            with self._reading() as db:
+                rows = db.execute(
+                    f"""
+                    SELECT
+                        full_name,
+                        parts,
+                        prose,
+                        highlight(component_search, 2, '{_MATCH_START}', '{_MATCH_END}')
+                            AS description
+                    FROM component_search
+                    WHERE component_search MATCH ?
+                    ORDER BY bm25(component_search, {", ".join(map(str, _SEARCH_COLUMN_WEIGHTS))})
+                    LIMIT ?
+                    """,
+                    (operator.join(terms), limit),
+                ).fetchall()
             if rows:
                 break
 
@@ -1015,13 +1027,19 @@ class TailwindPlus:
 
         shared_weights: dict[int, float] = defaultdict(float)
         known_weight, known_count = 0.0, 0
-        for row in self._db.execute(
-            """
-            SELECT weight, snippet_ids FROM structure_tokens
-            WHERE framework = ? AND token IN (SELECT value FROM json_each(?))
-            """,
-            (framework.value, token_list),
-        ):
+        with self._reading() as db:
+            token_rows = db.execute(
+                """
+                SELECT weight, snippet_ids FROM structure_tokens
+                WHERE framework = ? AND token IN (SELECT value FROM json_each(?))
+                """,
+                (framework.value, token_list),
+            ).fetchall()
+            (snippet_count,) = db.execute(
+                "SELECT COUNT(*) FROM structure_snippets WHERE framework = ?",
+                (framework.value,),
+            ).fetchone()
+        for row in token_rows:
             weight = row["weight"]
             known_weight += weight
             known_count += 1
@@ -1030,22 +1048,19 @@ class TailwindPlus:
             for snippet_id in snippet_ids:
                 shared_weights[snippet_id] += weight
 
-        (snippet_count,) = self._db.execute(
-            "SELECT COUNT(*) FROM structure_snippets WHERE framework = ?",
-            (framework.value,),
-        ).fetchone()
         # A token no snippet has weighs as much as one only a single snippet has.
         unknown_weight = math.log(1 + snippet_count)
         code_weight = known_weight + (len(tokens) - known_count) * unknown_weight
 
-        rows = self._db.execute(
-            """
-            SELECT id, full_name, tailwind_version, mode, weight
-            FROM structure_snippets
-            WHERE id IN (SELECT value FROM json_each(?))
-            """,
-            (json.dumps(list(shared_weights)),),
-        )
+        with self._reading() as db:
+            rows = db.execute(
+                """
+                SELECT id, full_name, tailwind_version, mode, weight
+                FROM structure_snippets
+                WHERE id IN (SELECT value FROM json_each(?))
+                """,
+                (json.dumps(list(shared_weights)),),
+            ).fetchall()
 
         best: dict[str, CodeMatch] = {}
         for row in rows:
