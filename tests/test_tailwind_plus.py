@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from mcp_tailwindplus.tailwind_plus import (
     MAX_RESULT_PROSE_CHARS,
     MAX_SEARCH_RESULTS,
+    MAX_SEARCH_WORDS,
     Component,
     ComponentNotFoundError,
     Framework,
@@ -440,6 +442,27 @@ class TestComponentSearch:
     ):
         """Search terms are words, never FTS5 query syntax."""
         tailwind_plus_instance.search_component_names(search_term)
+
+    def test_repeated_and_excess_words(self, tailwind_plus_instance):
+        """Repeated words are searched once, and words past MAX_SEARCH_WORDS
+        are ignored, so a long search term stays fast."""
+        begun = time.perf_counter()
+        results = tailwind_plus_instance.search_component_names("email " * 10_000)
+        assert time.perf_counter() - begun < 0.5
+        assert self._names(results) == [self.EMAIL_INPUT]
+
+        unmatched = [f"zz{number}" for number in range(MAX_SEARCH_WORDS)]
+        assert self._names(
+            tailwind_plus_instance.search_component_names(
+                " ".join(["email", *unmatched])
+            )
+        ) == [self.EMAIL_INPUT]
+        assert (
+            tailwind_plus_instance.search_component_names(
+                " ".join([*unmatched, "email"])
+            )
+            == []
+        )
 
     def test_long_prose_is_capped(self):
         fragment = "x" * (MAX_RESULT_PROSE_CHARS // 2)

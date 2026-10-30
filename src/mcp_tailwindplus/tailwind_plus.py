@@ -19,6 +19,11 @@ CACHE_FORMAT = "2"
 
 MAX_SEARCH_RESULTS = 50
 
+# Far more words than any description of a component needs. Each word adds a
+# prefix match to the full-text query, whose time grows faster than the number
+# of words, so the cap keeps a long search term from running for minutes.
+MAX_SEARCH_WORDS = 32
+
 # Most components' prose is shorter; the cap keeps a few long pages, such as a
 # full-year calendar, from dominating search results.
 MAX_RESULT_PROSE_CHARS = 1500
@@ -562,7 +567,9 @@ class TailwindPlus:
         description, best matches first.
 
         Components matching every word come first; when none do, components
-        matching any word are returned. Each result carries the component's
+        matching any word are returned. Repeated words are searched once, and
+        only the first MAX_SEARCH_WORDS distinct words. Each result carries the
+        component's
         visible prose (capped at MAX_RESULT_PROSE_CHARS) and parts. When a
         subcategory description matched, it comes with the subcategory's first
         result.
@@ -572,9 +579,10 @@ class TailwindPlus:
                 f"limit must be between 1 and {MAX_SEARCH_RESULTS}; got {limit}"
             )
 
+        words = list(dict.fromkeys(re.findall(r"\w+", search_term.lower())))
         # Quote each word so FTS5 query syntax in the search term is matched as
         # text, and match it as a prefix so partial words match.
-        terms = [f'"{word}"*' for word in re.findall(r"\w+", search_term.lower())]
+        terms = [f'"{word}"*' for word in words[:MAX_SEARCH_WORDS]]
         if not terms:
             return []
 
