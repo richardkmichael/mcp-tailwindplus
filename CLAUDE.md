@@ -4,7 +4,8 @@
 - Implementation uses Python and FastMCP
 - The project is managed using a `pyproject.toml` project file
 - Python and dependencies are managed using `uv`, e.g. `uv add [package]`
-- When done editing code, use `uv run ruff format .` and `uv run check . --fix` to format and check
+- When done editing code, use `uv run ruff format .` and `uv run ruff check . --fix` to format and
+  check
 - To run tests use: `uv run pytest`
 
 # Architecture

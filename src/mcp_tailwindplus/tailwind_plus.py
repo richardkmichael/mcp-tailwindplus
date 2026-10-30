@@ -1144,7 +1144,7 @@ class TailwindPlus:
         self,
         full_name: Annotated[
             str,
-            "The full dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
+            "The full dotted path name of the component to retrieve (e.g., 'Application UI.Forms.Input Groups.Input with leading icon')",
         ],
         framework: Annotated[
             Framework,
@@ -1179,7 +1179,7 @@ class TailwindPlus:
         self,
         full_name: Annotated[
             str,
-            "The full dotted path name of the component to retrieve preview for (e.g., 'Application UI.Forms.Input Groups.Label with leading icon')",
+            "The full dotted path name of the component to retrieve preview for (e.g., 'Application UI.Forms.Input Groups.Input with leading icon')",
         ],
         framework: Annotated[
             Framework,

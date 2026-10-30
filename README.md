@@ -98,13 +98,13 @@ Ask for UI:
 ```claude
 > I need a simple one-line search input to put in the app header.
 
- mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with leading icon", framework: "react", tailwind_version: "4")
+ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with leading icon", framework: "react", tailwind_version: "4", mode: "light")
   ⎿  {
        "version": "2025-07-14-204017",
        "full_name": "Application UI.Forms.Input Groups.Input with leading icon",
      … +15 lines (ctrl+r to expand)
 
- mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with keyboard shortcut", framework: "react", tailwind_version: "4")
+ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with keyboard shortcut", framework: "react", tailwind_version: "4", mode: "light")
   ⎿  {
        "version": "2025-07-14-204017",
        "full_name": "Application UI.Forms.Input Groups.Input with keyboard shortcut",
@@ -146,14 +146,15 @@ Ask for code for a use-case, help with a sketch:
 
 ⏺ mcp-tailwindplus - Search Component Names (MCP)(search_term: "input")
   ⎿  [
-       "Application UI.Forms.Input Groups.Input with leading icon",
-       "Application UI.Forms.Input Groups.Input with overlapping label",
-     … +22 lines (ctrl+r to expand)
+       {
+         "full_name": "Application UI.Forms.Input Groups.Input with inset label",
+         "prose": ["Name", "Jane Smith"],
+     … +60 lines (ctrl+r to expand)
 
 ⏺ Perfect! Let me get the "Input with inline leading add-on" component, which would be ideal for showing a URL schema
   prefix like "https://".
 
-⏺ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with inline add-on", framework: "react", tailwind_version: "4")
+⏺ mcp-tailwindplus - Get Component by Full Name (MCP)(full_name: "Application UI.Forms.Input Groups.Input with inline add-on", framework: "react", tailwind_version: "4", mode: "light")
   ⎿  {
        "version": "2025-07-14-204017",
        "full_name": "Application UI.Forms.Input Groups.Input with inline add-on",
@@ -200,11 +201,11 @@ its own path segment:
   `twplus://components/{product}/{category}/{subcategory}/{component}/{framework}/{tailwind_version}/{mode}`
 - `Component Preview` (HTML): the same URI followed by `/preview`
 
-For example, the HTML code of `Application UI.Forms.Input Groups.Label with leading icon` for
+For example, the HTML code of `Application UI.Forms.Input Groups.Input with leading icon` for
 Tailwind CSS 4 in light mode:
 
 ```
-twplus://components/Application UI/Forms/Input Groups/Label with leading icon/html/4/light
+twplus://components/Application UI/Forms/Input Groups/Input with leading icon/html/4/light
 ```
 
 ⚠️ **Note**: Resources require MCP clients that support "resource templates". Not all clients support this feature.
@@ -220,7 +221,7 @@ twplus://components/Application UI/Forms/Input Groups/Label with leading icon/ht
 ## Component Organization
 
 Components are organized hierarchically:
-- Categories: Marketing, Application UI, E-commerce, etc.
+- Categories: Marketing, Application UI, Ecommerce, etc.
 - Full Names: Use dot-separated paths like `Marketing.Hero Sections.Simple centered`
 - Search: Matches words, including partial words, in names, visible text, named parts, and
   subcategory descriptions
