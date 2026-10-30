@@ -651,7 +651,9 @@ class TestSQLiteCache:
 
     def test_build_removes_stale_caches(self, sample_data, tmp_path):
         """A build removes the caches of data files that are gone or have
-        changed, and keeps those of unchanged data files."""
+        changed, with their partial build files, and keeps those of unchanged
+        data files. A gone data file's lock file is removed too, while a
+        changed one's is kept for the cache's rebuild."""
         cache_dir = str(tmp_path / "cache")
         data_files = {}
         for name in ("gone", "changed", "unchanged", "current"):
@@ -659,20 +661,43 @@ class TestSQLiteCache:
             data_files[name].write_text(json.dumps(sample_data))
         for name in ("gone", "changed", "unchanged"):
             TailwindPlus(str(data_files[name]), cache_dir=cache_dir).close()
+
+        def cache_path(name):
+            return TailwindPlus._get_cache_path(str(data_files[name]), cache_dir)
+
+        killed_build = f"{cache_path('gone')}.x1y2z3.building"
+        open(killed_build, "w").close()
         data_files["gone"].unlink()
         data_files["changed"].write_text(json.dumps(sample_data) + " ")
 
         TailwindPlus(str(data_files["current"]), cache_dir=cache_dir).close()
 
-        def cache_exists(name):
-            return os.path.exists(
-                TailwindPlus._get_cache_path(str(data_files[name]), cache_dir)
-            )
+        assert not os.path.exists(cache_path("gone"))
+        assert not os.path.exists(killed_build)
+        assert not os.path.exists(f"{cache_path('gone')}.lock")
+        assert not os.path.exists(cache_path("changed"))
+        assert os.path.exists(f"{cache_path('changed')}.lock")
+        assert os.path.exists(cache_path("unchanged"))
+        assert os.path.exists(cache_path("current"))
 
-        assert not cache_exists("gone")
-        assert not cache_exists("changed")
-        assert cache_exists("unchanged")
-        assert cache_exists("current")
+    def test_cache_being_built_is_not_removed(self, sample_data, tmp_path):
+        """A stale cache whose lock another server holds, while rebuilding it,
+        is kept."""
+        fcntl = pytest.importorskip("fcntl")
+        cache_dir = str(tmp_path / "cache")
+        changed = tmp_path / "changed.json"
+        changed.write_text(json.dumps(sample_data))
+        TailwindPlus(str(changed), cache_dir=cache_dir).close()
+        changed.write_text(json.dumps(sample_data) + " ")
+        changed_cache = TailwindPlus._get_cache_path(str(changed), cache_dir)
+        current = tmp_path / "current.json"
+        current.write_text(json.dumps(sample_data))
+
+        with open(f"{changed_cache}.lock", "a") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            TailwindPlus(str(current), cache_dir=cache_dir).close()
+
+        assert os.path.exists(changed_cache)
 
     def test_servers_starting_at_once_build_once(
         self, data_file, tmp_path, monkeypatch

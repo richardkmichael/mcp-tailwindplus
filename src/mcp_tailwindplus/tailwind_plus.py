@@ -390,7 +390,10 @@ class TailwindPlus:
 
         Each data file has its own cache, so a newly downloaded data file
         would otherwise leave the previous file's cache behind. Caches of
-        unchanged data files are kept, since other servers may use them.
+        unchanged data files are kept, since other servers may use them, and
+        so are caches another server is building. A removed cache's partial
+        build files go with it, and so does its lock file when its data file
+        is gone, since no server can then build that cache.
         """
         pattern = os.path.join(
             glob.escape(os.path.dirname(cache_path)), f"{_CACHE_FILE_PREFIX}*.db"
@@ -400,13 +403,30 @@ class TailwindPlus:
         for other_cache_path in glob.glob(pattern):
             if other_cache_path == cache_path:
                 continue
-            data_file = cls._cache_data_file(other_cache_path)
-            if data_file is None or cls._cache_is_stale(other_cache_path, data_file):
-                try:
-                    os.remove(other_cache_path)
-                except OSError:
+            with _build_lock_unless_held(other_cache_path) as locked:
+                if not locked:
                     continue
-                logger.info("Removed stale cache %s", other_cache_path)
+                # Checked with the lock held, so a cache another server has
+                # just rebuilt is not removed.
+                data_file = cls._cache_data_file(other_cache_path)
+                if data_file is not None and not cls._cache_is_stale(
+                    other_cache_path, data_file
+                ):
+                    continue
+                for path in [
+                    other_cache_path,
+                    *glob.glob(f"{glob.escape(other_cache_path)}.*.building"),
+                ]:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                if data_file is None or not os.path.exists(data_file):
+                    try:
+                        os.remove(f"{other_cache_path}.lock")
+                    except OSError:
+                        pass
+            logger.info("Removed stale cache %s", other_cache_path)
 
     @staticmethod
     def _cache_data_file(cache_path: str) -> str | None:
@@ -1207,6 +1227,25 @@ def _build_lock(cache_path: str) -> Iterator[None]:
     with open(f"{cache_path}.lock", "a") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         yield
+
+
+@contextmanager
+def _build_lock_unless_held(cache_path: str) -> Iterator[bool]:
+    """Take a cache's build lock without waiting, yielding whether it was
+    taken: another server holding it is building that cache.
+
+    Without fcntl, on Windows, no lock is taken and True is yielded.
+    """
+    if fcntl is None:
+        yield True
+        return
+    with open(f"{cache_path}.lock", "a") as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
 
 
 def _components(tailwindplus_data: dict) -> Iterator[tuple[str, list[dict]]]:
