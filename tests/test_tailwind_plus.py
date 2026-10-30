@@ -653,12 +653,13 @@ class TestSQLiteCache:
         assert len(builds) == 1
         assert names[0] == names[1] != []
 
-    @pytest.mark.parametrize("failure", ["cannot start", "breaks"])
+    @pytest.mark.parametrize("failure", ["cannot start", "breaks", "breaks partway"])
     def test_build_without_workers(
         self, data_file, tmp_path, monkeypatch, caplog, failure
     ):
         """When worker processes cannot start, or fail while parsing, code is
-        parsed in the building process instead."""
+        parsed in the building process instead, from where the workers
+        stopped."""
         with TailwindPlus(data_file, cache_dir=str(tmp_path / "serial")) as serial:
             expected = serial.search_components_by_code(
                 serial.get_component_by_full_name(
@@ -674,13 +675,14 @@ class TestSQLiteCache:
             def __init__(self, *args, **kwargs):
                 pass
 
-            def map(self, *args, **kwargs):
+            def map(self, function, *iterables, chunksize=1):
                 if failure == "cannot start":
                     raise BlockingIOError(35, "Resource temporarily unavailable")
 
                 def broken():
+                    if failure == "breaks partway":
+                        yield function(*next(zip(*iterables, strict=True)))
                     raise BrokenProcessPool("a worker died")
-                    yield
 
                 return broken()
 

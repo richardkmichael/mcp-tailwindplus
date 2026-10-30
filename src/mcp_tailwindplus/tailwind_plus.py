@@ -11,8 +11,8 @@ import tempfile
 import threading
 import time
 from array import array
-from collections import defaultdict
-from collections.abc import Callable, Iterator
+from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
@@ -490,17 +490,13 @@ class TailwindPlus:
             ):
                 self._index_component(full_name, parts, prose, descriptions)
 
-            tokens = structures.results()
-
-        tokens_by_framework: dict[
-            str, list[tuple[tuple[str, str, str], frozenset[str]]]
-        ] = {}
-        for (full_name, snippet), snippet_tokens in zip(snippets, tokens, strict=True):
-            framework, tailwind_version, mode = _variant(snippet)
-            tokens_by_framework.setdefault(framework, []).append(
-                ((full_name, tailwind_version, mode), snippet_tokens)
+            # Index each snippet's tokens as the workers return them.
+            self._index_structure(
+                (full_name, *_variant(snippet), tokens)
+                for (full_name, snippet), tokens in zip(
+                    snippets, structures.iter_results(), strict=True
+                )
             )
-        self._index_structure(tokens_by_framework)
 
     def _index_component(
         self, full_name: str, parts: list[str], prose: list[str], descriptions: dict
@@ -536,50 +532,53 @@ class TailwindPlus:
         )
 
     def _index_structure(
-        self,
-        structures: dict[str, list[tuple[tuple[str, str, str], frozenset[str]]]],
+        self, snippets: Iterable[tuple[str, str, str, str, frozenset[str]]]
     ) -> None:
-        """Store each snippet's structure tokens, weighted by rarity.
+        """Store each snippet's structure tokens, weighted by rarity, given
+        each snippet's full name, framework, Tailwind version, mode and tokens.
 
         Given N snippets of a framework, n of which have a token, the token
         weighs log(1 + N / n), so tokens nearly every snippet has, such as
         `class:flex`, count for little, and a token every snippet has still
         counts.
         """
-        token_rows, snippet_rows = [], []
-        for framework, snippets in structures.items():
-            snippet_ids_by_token: dict[str, array] = {}
-            for (full_name, tailwind_version, mode), tokens in snippets:
-                snippet_id = len(snippet_rows) + 1
-                snippet_rows.append(
-                    [snippet_id, full_name, framework, tailwind_version, mode]
-                )
-                for token in tokens:
-                    snippet_ids = snippet_ids_by_token.get(token)
-                    if snippet_ids is None:
-                        snippet_ids = snippet_ids_by_token[token] = array(
-                            _SNIPPET_ID_TYPECODE
-                        )
-                    snippet_ids.append(snippet_id)
-
-            weights = {
-                token: math.log(1 + len(snippets) / len(snippet_ids))
-                for token, snippet_ids in snippet_ids_by_token.items()
-            }
-            token_rows.extend(
-                (framework, token, weights[token], snippet_ids.tobytes())
-                for token, snippet_ids in snippet_ids_by_token.items()
+        snippet_rows, snippet_tokens = [], []
+        snippet_ids_by_token: dict[str, dict[str, array]] = {}
+        for full_name, framework, tailwind_version, mode, tokens in snippets:
+            snippet_id = len(snippet_rows) + 1
+            snippet_rows.append(
+                [snippet_id, full_name, framework, tailwind_version, mode]
             )
-            first_row = len(snippet_rows) - len(snippets)
-            for row, (_, tokens) in zip(
-                snippet_rows[first_row:], snippets, strict=True
-            ):
-                row.append(sum(weights[token] for token in tokens))
+            snippet_tokens.append(tokens)
+            framework_snippet_ids = snippet_ids_by_token.setdefault(framework, {})
+            for token in tokens:
+                snippet_ids = framework_snippet_ids.get(token)
+                if snippet_ids is None:
+                    snippet_ids = framework_snippet_ids[token] = array(
+                        _SNIPPET_ID_TYPECODE
+                    )
+                snippet_ids.append(snippet_id)
+
+        snippet_counts = Counter(row[2] for row in snippet_rows)
+        weights = {
+            framework: {
+                token: math.log(1 + snippet_counts[framework] / len(snippet_ids))
+                for token, snippet_ids in framework_snippet_ids.items()
+            }
+            for framework, framework_snippet_ids in snippet_ids_by_token.items()
+        }
+        for row, tokens in zip(snippet_rows, snippet_tokens, strict=True):
+            framework_weights = weights[row[2]]
+            row.append(sum(framework_weights[token] for token in tokens))
 
         self._db.executemany(
             "INSERT INTO structure_tokens (framework, token, weight, snippet_ids) "
             "VALUES (?, ?, ?, ?)",
-            token_rows,
+            (
+                (framework, token, weights[framework][token], snippet_ids.tobytes())
+                for framework, framework_snippet_ids in snippet_ids_by_token.items()
+                for token, snippet_ids in framework_snippet_ids.items()
+            ),
         )
         self._db.executemany(
             """
@@ -1120,20 +1119,34 @@ class _Mapped[Result]:
 
     def results(self) -> list[Result]:
         """Return the result for each argument tuple, in order."""
-        unique_results = None
+        return list(self.iter_results())
+
+    def iter_results(self) -> Iterator[Result]:
+        """Yield the result for each argument tuple, in order, each as soon as
+        it is computed."""
+        unique_results = self._iter_unique_results()
+        results_by_arguments: dict[tuple, Result] = {}
+        for arguments in self._arguments:
+            # Distinct tuples are computed in the order of their first
+            # occurrences, so a tuple not yet seen is the next one computed.
+            if arguments not in results_by_arguments:
+                results_by_arguments[arguments] = next(unique_results)
+            yield results_by_arguments[arguments]
+
+    def _iter_unique_results(self) -> Iterator[Result]:
+        """Yield the result for each distinct argument tuple, in order: from the
+        workers, then, if they fail, from this process for those remaining."""
+        computed = 0
         if self._pending is not None:
             try:
-                unique_results = list(self._pending)
+                for result in self._pending:
+                    computed += 1
+                    yield result
+                return
             except BrokenProcessPool as error:
                 _warn_parsing_in_process(error)
-        if unique_results is None:
-            unique_results = [
-                self._function(*arguments) for arguments in self._unique_arguments
-            ]
-        results_by_arguments = dict(
-            zip(self._unique_arguments, unique_results, strict=True)
-        )
-        return [results_by_arguments[arguments] for arguments in self._arguments]
+        for arguments in self._unique_arguments[computed:]:
+            yield self._function(*arguments)
 
 
 def _warn_parsing_in_process(error: BaseException) -> None:
