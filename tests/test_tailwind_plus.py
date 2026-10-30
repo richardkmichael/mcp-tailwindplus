@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import threading
 import time
 from array import array
 from concurrent.futures import ThreadPoolExecutor
@@ -609,8 +610,36 @@ class TestSQLiteCache:
 
         assert parallel == serial
 
+    def test_servers_starting_at_once_build_once(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """Instances created at once with a stale cache build it once; the
+        others wait for it and open it."""
+        build_cache = TailwindPlus._build_cache
+        builds = []
+        both_started = threading.Barrier(2)
+
+        def slow_build_cache(self, *args):
+            builds.append(threading.get_ident())
+            # Give the other instance time to find the cache stale and wait.
+            time.sleep(0.3)
+            build_cache(self, *args)
+
+        def start():
+            both_started.wait()
+            with TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")) as tp:
+                return tp.list_component_names()
+
+        monkeypatch.setattr(TailwindPlus, "_build_cache", slow_build_cache)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            names = list(pool.map(lambda _: start(), range(2)))
+
+        assert len(builds) == 1
+        assert names[0] == names[1] != []
+
     def test_interrupted_build_leaves_no_cache(self, data_file, tmp_path, monkeypatch):
-        """A build that fails leaves neither a cache nor its partial file."""
+        """A build that fails leaves neither a cache nor its partial file, only
+        the lock file that every build uses."""
 
         def fail(*args):
             raise RuntimeError("build interrupted")
@@ -619,7 +648,7 @@ class TestSQLiteCache:
         with pytest.raises(RuntimeError, match="build interrupted"):
             TailwindPlus(data_file, cache_dir=str(tmp_path / "cache"))
 
-        assert list((tmp_path / "cache").iterdir()) == []
+        assert [path.suffix for path in (tmp_path / "cache").iterdir()] == [".lock"]
 
     def test_cache_file_is_created(self, data_file, tmp_path):
         """Test that a cache DB file is created on first instantiation."""

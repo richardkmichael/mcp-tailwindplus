@@ -10,6 +10,14 @@ from mcp_tailwindplus import FRAMEWORK_CHOICES, _project_setting
 from mcp_tailwindplus.tailwind_plus import Framework
 
 
+@pytest.fixture(autouse=True)
+def isolated_cache_dir(tmp_path, monkeypatch):
+    """Keep the CLI's cache, which is in the user's cache directory, out of the
+    real one, on macOS through HOME and on Linux through XDG_CACHE_HOME."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+
 def _run_cli(*args, env=None):
     """Run the CLI entry point in a subprocess and capture its output."""
     return subprocess.run(

@@ -18,6 +18,11 @@ from pathlib import Path
 from typing import Annotated
 
 import orjson
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
 from packaging.version import Version
 from platformdirs import user_cache_dir
 
@@ -171,9 +176,11 @@ class TailwindPlus:
         self._connections_lock = threading.Lock()
 
         if self._cache_is_stale(self._cache_path, data_file):
-            self._build_cache(data_file, self._cache_path)
-        else:
-            self._load_metadata_from_db()
+            with _build_lock(self._cache_path):
+                # Another server may have built the cache while this one waited.
+                if self._cache_is_stale(self._cache_path, data_file):
+                    self._build_cache(data_file, self._cache_path)
+        self._load_metadata_from_db()
 
         self._component_names = self._load_component_names()
 
@@ -288,8 +295,6 @@ class TailwindPlus:
                 f"TailwindPlus data requires downloader version >= 3.0.0-rc1 for mode support. "
                 f"Found version {self.downloader_version}. Please regenerate the data file with a newer downloader version."
             )
-
-        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 
         # Build into a new file that replaces the cache only once complete, so
         # an interrupted build never leaves a partial cache in its place. That
@@ -964,6 +969,24 @@ class TailwindPlus:
         )
 
         return snippet["preview"]
+
+
+@contextmanager
+def _build_lock(cache_path: str) -> Iterator[None]:
+    """Hold an exclusive lock on the cache's lock file, creating the cache
+    directory if needed, so servers starting at once build the cache one at a
+    time.
+
+    Without fcntl, on Windows, no lock is taken, and servers starting at once
+    each build the cache; the last build to finish replaces the others.
+    """
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    if fcntl is None:
+        yield
+        return
+    with open(f"{cache_path}.lock", "a") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        yield
 
 
 def _components(tailwindplus_data: dict) -> Iterator[tuple[str, list[dict]]]:
