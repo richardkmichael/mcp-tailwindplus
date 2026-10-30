@@ -134,10 +134,17 @@ def main():
                 project_mode=project_mode,
             )
 
+            # FastMCP's banner checks PyPI for a newer FastMCP before serving,
+            # which delays every start by up to 2 s when PyPI is unreachable.
             if args.transport == "http":
-                mcp_server.run(transport="http", host=args.host, port=args.port)
+                mcp_server.run(
+                    transport="http",
+                    host=args.host,
+                    port=args.port,
+                    show_banner=False,
+                )
             else:
-                mcp_server.run()
+                mcp_server.run(show_banner=False)
 
     except KeyboardInterrupt:
         print("\nServer stopped by user", file=sys.stderr)
