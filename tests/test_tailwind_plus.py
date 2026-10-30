@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -482,6 +483,34 @@ class TestSQLiteCache:
 
         with pytest.raises(sqlite3.ProgrammingError):
             tp._db.execute("SELECT 1")
+
+    def test_concurrent_reads(self, tailwind_plus_instance):
+        """Calls from many threads at once, as FastMCP makes them, return what
+        the same calls return one at a time."""
+        calls = [
+            (full_name, framework)
+            for full_name in [
+                "Application UI.Forms.Input Groups.Label with leading icon",
+                "Application UI.Forms.Select Menus.Simple",
+                "Application UI.Navigation.Breadcrumbs.Simple",
+            ]
+            for framework in (Framework.HTML, Framework.REACT)
+        ] * 100
+
+        def get(call):
+            full_name, framework = call
+            try:
+                return tailwind_plus_instance.get_component_by_full_name(
+                    full_name, framework, TailwindVersion.V4, Mode.LIGHT
+                ).code
+            except Exception as error:
+                return type(error).__name__
+
+        one_at_a_time = [get(call) for call in calls]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            concurrently = list(pool.map(get, calls))
+
+        assert concurrently == one_at_a_time
 
     def test_connection_is_read_only(self, tailwind_plus_instance):
         """The cache connection rejects writes but still serves reads."""

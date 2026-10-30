@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -130,20 +131,43 @@ class ComponentNotFoundError(Exception):
 
 class TailwindPlus:
     def __init__(self, data_file: str, cache_dir: str | None = None):
-        cache_path = self._get_cache_path(data_file, cache_dir)
+        self._cache_path = self._get_cache_path(data_file, cache_dir)
+        self._thread = threading.local()
+        self._connections: list[sqlite3.Connection] = []
+        self._connections_lock = threading.Lock()
 
-        if self._cache_is_stale(cache_path, data_file):
-            self._build_cache(data_file, cache_path)
+        if self._cache_is_stale(self._cache_path, data_file):
+            self._build_cache(data_file, self._cache_path)
         else:
-            self._db = self._connect_readonly(cache_path)
             self._load_metadata_from_db()
 
         self._component_names = self._load_component_names()
 
+    @property
+    def _db(self) -> sqlite3.Connection:
+        """The calling thread's connection to the cache.
+
+        FastMCP runs tool calls in worker threads. The sqlite3 module reuses a
+        connection's prepared statements, so calls sharing one connection can
+        step the same statement at once and return each other's rows; each
+        thread opens its own connection instead.
+        """
+        db = getattr(self._thread, "db", None)
+        if db is None:
+            db = self._connect_readonly(self._cache_path)
+            with self._connections_lock:
+                self._connections.append(db)
+            self._thread.db = db
+        return db
+
     def close(self) -> None:
-        """Close the SQLite database connection."""
-        if hasattr(self, "_db") and self._db:
-            self._db.close()
+        """Close the SQLite database connections of every thread."""
+        # An instance whose construction failed early has no connections.
+        if not hasattr(self, "_connections_lock"):
+            return
+        with self._connections_lock:
+            for db in self._connections:
+                db.close()
 
     def __enter__(self) -> "TailwindPlus":
         return self
@@ -158,9 +182,8 @@ class TailwindPlus:
     def _connect_readonly(cache_path: str) -> sqlite3.Connection:
         """Open the cache database read-only so any write raises instead of proceeding.
 
-        The connection is shared across threads (FastMCP may dispatch tool calls
-        from a worker thread); opening read-only makes the read-only assumption
-        explicit and enforced.
+        Each thread has its own connection; opening read-only makes the
+        read-only assumption explicit and enforced.
         """
         uri = f"{Path(cache_path).absolute().as_uri()}?mode=ro"
         db = sqlite3.connect(uri, uri=True, check_same_thread=False)
@@ -238,17 +261,22 @@ class TailwindPlus:
         if os.path.exists(cache_path):
             os.remove(cache_path)
 
-        self._db = sqlite3.connect(cache_path, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        self._create_tables()
-        # Data from downloaders before 4.0.0 has no descriptions.
-        self._populate_db(raw_data["tailwindplus"], raw_data.get("descriptions", {}))
-        self._store_metadata(data_file)
-        self._db.commit()
-
-        # Reopen read-only for the rest of the process: all further access is reads.
-        self._db.close()
-        self._db = self._connect_readonly(cache_path)
+        # The building thread's connection writes the new file; the build's
+        # methods reach it as self._db.
+        self._thread.db = sqlite3.connect(cache_path)
+        try:
+            self._db.row_factory = sqlite3.Row
+            self._create_tables()
+            # Data from downloaders before 4.0.0 has no descriptions.
+            self._populate_db(
+                raw_data["tailwindplus"], raw_data.get("descriptions", {})
+            )
+            self._store_metadata(data_file)
+            self._db.commit()
+            self._db.close()
+        finally:
+            # All further access is reads, through read-only connections.
+            del self._thread.db
 
     def _create_tables(self) -> None:
         """Create the SQLite tables."""
