@@ -1,9 +1,12 @@
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
 import threading
+from array import array
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -12,10 +15,11 @@ from typing import Annotated
 from packaging.version import Version
 from platformdirs import user_cache_dir
 
+from .component_structure import extract_structure
 from .component_text import extract_parts, extract_prose
 
 # Bump when the cache's tables change, so caches built by older code are rebuilt.
-CACHE_FORMAT = "2"
+CACHE_FORMAT = "3"
 
 MAX_SEARCH_RESULTS = 50
 
@@ -34,6 +38,10 @@ _SEARCH_COLUMN_WEIGHTS = (10.0, 5.0, 2.0, 1.0)
 
 # Separates prose fragments and parts in the search index.
 _TEXT_SEPARATOR = "\n"
+
+# Snippet ids in the structure index are packed as unsigned 32-bit integers, in
+# the machine's byte order; caches are built and read on the same machine.
+_SNIPPET_ID_TYPECODE = "I"
 
 # Marks the matched terms of a description in search queries.
 _MATCH_START, _MATCH_END = "\x02", "\x03"
@@ -115,6 +123,17 @@ class SearchResult:
     # The component's subcategory description, only when it matched the search
     # and this is the subcategory's first result.
     description: str | None
+
+
+@dataclass
+class CodeMatch:
+    """A component variant that code may have been copied from."""
+
+    full_name: str
+    tailwind_version: TailwindVersion
+    mode: Mode
+    # From 0 to 1; 1 is code with exactly the component's classes and elements.
+    similarity: float
 
 
 class ComponentNotFoundError(Exception):
@@ -308,6 +327,37 @@ class TailwindPlus:
             )
             """
         )
+        # The structure index: each snippet with the summed weight of its
+        # structure tokens, and each token with its weight per framework and the
+        # snippets having it. Snippet rows hold code and previews, so the index
+        # has its own narrow snippet table to keep matching fast.
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS structure_snippets (
+                id INTEGER PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                framework TEXT NOT NULL,
+                tailwind_version TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                weight REAL NOT NULL
+            )
+            """
+        )
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS structure_tokens (
+                id INTEGER PRIMARY KEY,
+                framework TEXT NOT NULL,
+                token TEXT NOT NULL,
+                weight REAL NOT NULL,
+                -- The ids of the snippets having the token, packed as
+                -- _SNIPPET_ID_TYPECODE array items: one row per token, instead
+                -- of one per token of each snippet, keeps the build's writes few.
+                snippet_ids BLOB NOT NULL,
+                UNIQUE (framework, token)
+            )
+            """
+        )
         # One row per component. The porter tokenizer stems words, so "dropdowns"
         # matches "dropdown".
         self._db.execute(
@@ -321,7 +371,8 @@ class TailwindPlus:
 
     def _populate_db(self, tailwindplus_data: dict, descriptions: dict) -> None:
         """Traverse the JSON tree, insert snippets into the DB, and index each
-        component for search."""
+        component for search and each snippet by its structure."""
+        structures: dict[str, list[tuple[tuple[str, str, str], frozenset[str]]]] = {}
 
         def traverse(obj: dict, path: list[str] | None = None):
             if path is None:
@@ -356,6 +407,15 @@ class TailwindPlus:
                                 1 if snippet["supportsDarkMode"] else 0,
                             ),
                         )
+                        structures.setdefault(framework, []).append(
+                            (
+                                (component_name, tailwind_version, mode),
+                                extract_structure(
+                                    snippet["code"],
+                                    jsx=snippet["language"] == Language.JSX.value,
+                                ),
+                            )
+                        )
                     self._index_component(
                         component_name, value["snippets"], descriptions
                     )
@@ -363,6 +423,7 @@ class TailwindPlus:
                     traverse(value, current_path)
 
         traverse(tailwindplus_data)
+        self._index_structure(structures)
 
     def _index_component(
         self, full_name: str, snippets: list[dict], descriptions: dict
@@ -404,6 +465,61 @@ class TailwindPlus:
                 description,
                 _TEXT_SEPARATOR.join(extract_prose(html)),
             ),
+        )
+
+    def _index_structure(
+        self,
+        structures: dict[str, list[tuple[tuple[str, str, str], frozenset[str]]]],
+    ) -> None:
+        """Store each snippet's structure tokens, weighted by rarity.
+
+        Given N snippets of a framework, n of which have a token, the token
+        weighs log(1 + N / n), so tokens nearly every snippet has, such as
+        `class:flex`, count for little, and a token every snippet has still
+        counts.
+        """
+        token_rows, snippet_rows = [], []
+        for framework, snippets in structures.items():
+            snippet_ids_by_token: dict[str, array] = {}
+            for (full_name, tailwind_version, mode), tokens in snippets:
+                snippet_id = len(snippet_rows) + 1
+                snippet_rows.append(
+                    [snippet_id, full_name, framework, tailwind_version, mode]
+                )
+                for token in tokens:
+                    snippet_ids = snippet_ids_by_token.get(token)
+                    if snippet_ids is None:
+                        snippet_ids = snippet_ids_by_token[token] = array(
+                            _SNIPPET_ID_TYPECODE
+                        )
+                    snippet_ids.append(snippet_id)
+
+            weights = {
+                token: math.log(1 + len(snippets) / len(snippet_ids))
+                for token, snippet_ids in snippet_ids_by_token.items()
+            }
+            token_rows.extend(
+                (framework, token, weights[token], snippet_ids.tobytes())
+                for token, snippet_ids in snippet_ids_by_token.items()
+            )
+            first_row = len(snippet_rows) - len(snippets)
+            for row, (_, tokens) in zip(
+                snippet_rows[first_row:], snippets, strict=True
+            ):
+                row.append(sum(weights[token] for token in tokens))
+
+        self._db.executemany(
+            "INSERT INTO structure_tokens (framework, token, weight, snippet_ids) "
+            "VALUES (?, ?, ?, ?)",
+            token_rows,
+        )
+        self._db.executemany(
+            """
+            INSERT INTO structure_snippets
+                (id, full_name, framework, tailwind_version, mode, weight)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            snippet_rows,
         )
 
     def _store_metadata(self, data_file: str) -> None:
@@ -628,6 +744,97 @@ class TailwindPlus:
                 )
             )
         return results
+
+    def search_components_by_code(
+        self,
+        code: Annotated[
+            str,
+            "HTML, JSX or Vue template code, such as a TailwindPlus component copied into a project and edited since, or part of one",
+        ],
+        framework: Annotated[
+            Framework,
+            "The code's framework - 'html', 'react', or 'vue'",
+        ],
+        limit: Annotated[
+            int,
+            f"Maximum number of results, 1 to {MAX_SEARCH_RESULTS}",
+        ] = 5,
+    ) -> list[CodeMatch]:
+        """Find the components code was most likely copied from, best matches
+        first, each with its closest Tailwind version and mode.
+
+        Code and component variants are compared by their structure tokens (see
+        extract_structure), weighted by rarity. A variant's similarity is the
+        mean of two shares of token weight: the share of the code's tokens the
+        variant has, which stays high for code copied from part of a component,
+        and the share of their tokens combined that both have, which favors
+        variants of the code's size.
+        """
+        if not 1 <= limit <= MAX_SEARCH_RESULTS:
+            raise ValueError(
+                f"limit must be between 1 and {MAX_SEARCH_RESULTS}; got {limit}"
+            )
+
+        tokens = extract_structure(code, jsx=framework is Framework.REACT)
+        if not tokens:
+            return []
+        token_list = json.dumps(sorted(tokens))
+
+        shared_weights: dict[int, float] = defaultdict(float)
+        known_weight, known_count = 0.0, 0
+        for row in self._db.execute(
+            """
+            SELECT weight, snippet_ids FROM structure_tokens
+            WHERE framework = ? AND token IN (SELECT value FROM json_each(?))
+            """,
+            (framework.value, token_list),
+        ):
+            weight = row["weight"]
+            known_weight += weight
+            known_count += 1
+            snippet_ids = array(_SNIPPET_ID_TYPECODE)
+            snippet_ids.frombytes(row["snippet_ids"])
+            for snippet_id in snippet_ids:
+                shared_weights[snippet_id] += weight
+
+        (snippet_count,) = self._db.execute(
+            "SELECT COUNT(*) FROM structure_snippets WHERE framework = ?",
+            (framework.value,),
+        ).fetchone()
+        # A token no snippet has weighs as much as one only a single snippet has.
+        unknown_weight = math.log(1 + snippet_count)
+        code_weight = known_weight + (len(tokens) - known_count) * unknown_weight
+
+        rows = self._db.execute(
+            """
+            SELECT id, full_name, tailwind_version, mode, weight
+            FROM structure_snippets
+            WHERE id IN (SELECT value FROM json_each(?))
+            """,
+            (json.dumps(list(shared_weights)),),
+        )
+
+        best: dict[str, CodeMatch] = {}
+        for row in rows:
+            shared_weight = shared_weights[row["id"]]
+            containment = shared_weight / code_weight
+            jaccard = shared_weight / (code_weight + row["weight"] - shared_weight)
+            similarity = (containment + jaccard) / 2
+            full_name = row["full_name"]
+            if full_name not in best or similarity > best[full_name].similarity:
+                best[full_name] = CodeMatch(
+                    full_name=full_name,
+                    tailwind_version=TailwindVersion(row["tailwind_version"]),
+                    mode=Mode(row["mode"]),
+                    similarity=similarity,
+                )
+
+        ranked = sorted(
+            best.values(), key=lambda match: (-match.similarity, match.full_name)
+        )
+        for match in ranked[:limit]:
+            match.similarity = round(match.similarity, 3)
+        return ranked[:limit]
 
     def component_name_levels(self, parent_levels: list[str]) -> list[str]:
         """Return the distinct name levels directly below the given parent levels.

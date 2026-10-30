@@ -293,6 +293,23 @@ class TestMCPServerFunctionality:
         assert len(json.loads(result.content[0].text)) == 1
 
     @pytest.mark.asyncio
+    async def test_search_components_by_code(self, mcp_server):
+        """Results carry each component's name, closest variant and similarity."""
+        async with Client(mcp_server) as client:
+            result = await client.call_tool(
+                "search_components_by_code",
+                {"code": '<select class="form-select"></select>', "framework": "html"},
+            )
+
+        [match, *_] = json.loads(result.content[0].text)
+        assert match == {
+            "full_name": "Application UI.Forms.Select Menus.Basic",
+            "tailwind_version": "4",
+            "mode": "light",
+            "similarity": 1.0,
+        }
+
+    @pytest.mark.asyncio
     async def test_search_components_no_matches(self, mcp_server):
         """Test search with no matches."""
         async with Client(mcp_server) as client:
@@ -355,6 +372,7 @@ class TestMCPServerMetadata:
             "get_component_by_full_name",
             "get_component_preview_by_full_name",
             "search_component_names",
+            "search_components_by_code",
         ]
 
         for tool_name in expected_tools:

@@ -9,6 +9,7 @@ from mcp_tailwindplus.tailwind_plus import (
     MAX_RESULT_PROSE_CHARS,
     MAX_SEARCH_RESULTS,
     MAX_SEARCH_WORDS,
+    CodeMatch,
     Component,
     ComponentNotFoundError,
     Framework,
@@ -482,6 +483,76 @@ class TestComponentSearch:
             results = tailwind_plus.search_component_names("projects")
 
         assert [result.description for result in results] == [None]
+
+
+class TestCodeSearch:
+    """Test finding the components code was copied from."""
+
+    EMAIL_INPUT = "Application UI.Forms.Input Groups.Label with leading icon"
+    SELECT_MENU = "Application UI.Forms.Select Menus.Simple"
+
+    def _code(self, tailwind_plus_instance, full_name, framework=Framework.HTML):
+        return tailwind_plus_instance.get_component_by_full_name(
+            full_name, framework, TailwindVersion.V4, Mode.LIGHT
+        ).code
+
+    def test_component_code_matches_itself(self, tailwind_plus_instance):
+        code = self._code(tailwind_plus_instance, self.SELECT_MENU)
+
+        [first, *_] = tailwind_plus_instance.search_components_by_code(
+            code, Framework.HTML
+        )
+
+        assert first == CodeMatch(
+            full_name=self.SELECT_MENU,
+            tailwind_version=TailwindVersion.V4,
+            mode=Mode.LIGHT,
+            similarity=1.0,
+        )
+
+    def test_edited_part_matches(self, tailwind_plus_instance):
+        """The input of the email field, with its classes reordered and wrapped
+        in a new element, still matches the email field first."""
+        code = """<form class="space-y-4">
+  <input type="email" class="sm:leading-6 sm:text-sm focus:ring-indigo-600 focus:ring-inset focus:ring-2 placeholder:text-gray-400 ring-gray-300 ring-inset ring-1 text-gray-900 pl-10 py-1.5 border-0 rounded-md w-full block">
+</form>"""
+
+        matches = tailwind_plus_instance.search_components_by_code(code, Framework.HTML)
+
+        assert matches[0].full_name == self.EMAIL_INPUT
+        assert matches[0].similarity < 1
+
+    def test_framework_variants_only(self, tailwind_plus_instance):
+        """React code is compared only with React variants."""
+        code = self._code(tailwind_plus_instance, self.EMAIL_INPUT, Framework.REACT)
+
+        matches = tailwind_plus_instance.search_components_by_code(
+            code, Framework.REACT
+        )
+
+        assert [match.full_name for match in matches] == [self.EMAIL_INPUT]
+
+    @pytest.mark.parametrize(
+        "code", ["", "plain text", '<div class="unknown-class"></div>']
+    )
+    def test_code_sharing_nothing(self, tailwind_plus_instance, code):
+        assert (
+            tailwind_plus_instance.search_components_by_code(code, Framework.HTML) == []
+        )
+
+    def test_limit(self, tailwind_plus_instance):
+        code = '<div class="block text-sm font-medium leading-6 text-gray-900"></div>'
+        matches = tailwind_plus_instance.search_components_by_code(
+            code, Framework.HTML, limit=1
+        )
+        assert len(matches) == 1
+
+    @pytest.mark.parametrize("limit", [0, MAX_SEARCH_RESULTS + 1])
+    def test_limit_out_of_range(self, tailwind_plus_instance, limit):
+        with pytest.raises(ValueError, match="limit must be between"):
+            tailwind_plus_instance.search_components_by_code(
+                "<div></div>", Framework.HTML, limit=limit
+            )
 
 
 class TestSQLiteCache:

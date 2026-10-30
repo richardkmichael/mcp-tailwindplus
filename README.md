@@ -182,6 +182,9 @@ uses them when retrieving components. eCommerce components still use mode `none`
 4. `search_component_names` - Search components by name, visible text, named parts (icons, UI
    components, HTML elements, labeled sections), and category description; returns the best matches
    with their text
+5. `search_components_by_code` - Find the components code was copied from, by its classes and
+   elements, also after edits or when only part was copied; returns the best matches with their
+   closest Tailwind version and mode
 
 ## Available Resources
 

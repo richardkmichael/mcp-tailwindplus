@@ -17,6 +17,9 @@ The project separates domain logic from MCP wiring:
 - `src/mcp_tailwindplus/component_text.py` — extracts searchable text (visible prose, and named
   parts: icons, UI components, semantic elements, labeled sections) from component code. Has no
   FastMCP dependency.
+- `src/mcp_tailwindplus/component_structure.py` — extracts structural tokens (classes, and
+  elements as tag plus classes) from HTML, Vue and JSX code, for finding the component code was
+  copied from. Has no FastMCP dependency.
 - `src/mcp_tailwindplus/server.py` — thin factory (`create_server`) that wires `TailwindPlus`
   methods as FastMCP tools/resources with metadata (descriptions, tags, annotations).
 - `src/mcp_tailwindplus/preview_viewer.py` — the MCP Apps viewer page that renders the preview

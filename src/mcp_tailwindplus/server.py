@@ -60,6 +60,9 @@ Searching:
   'profile dropdown'.
 - Icons are named by their shape, not their meaning: search 'exclamation triangle' for a
   warning icon.
+- search_components_by_code finds the components code was copied from, by its classes and
+  elements, after edits and when only part was copied. Use it to identify components already
+  in a project, such as before updating them.
 
 IMPORTANT - Mode Requirements:
 
@@ -191,6 +194,17 @@ def create_server(
         tags={"search", "components", "find"},
         annotations={
             "title": "Search Components",
+            "readOnlyHint": True,
+            "idempotentHint": True,
+        },
+    )
+
+    server.tool(
+        tailwind_plus_instance.search_components_by_code,
+        description="Find the TailwindPlus components that code was most likely copied from, such as a component copied into a project and edited since, or part of one. Compares classes and elements regardless of order, and returns each component's closest Tailwind version and mode with a similarity from 0 to 1",
+        tags={"search", "components", "code"},
+        annotations={
+            "title": "Search Components by Code",
             "readOnlyHint": True,
             "idempotentHint": True,
         },
