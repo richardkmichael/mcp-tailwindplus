@@ -175,9 +175,10 @@ def _project_setting[SettingT: Enum](
 
 
 def _clear_cache():
-    """Remove all cached component databases."""
+    """Remove all cached component databases, with their lock files and the
+    partial files of interrupted builds."""
     cache_dir = user_cache_dir("mcp-tailwindplus")
-    pattern = os.path.join(cache_dir, "tailwindplus_components_cache_*.db")
+    pattern = os.path.join(cache_dir, "tailwindplus_components_cache_*")
     files = glob.glob(pattern)
 
     if not files:

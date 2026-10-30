@@ -1,3 +1,4 @@
+import glob
 import hashlib
 import json
 import math
@@ -299,8 +300,17 @@ class TailwindPlus:
         # Build into a new file that replaces the cache only once complete, so
         # an interrupted build never leaves a partial cache in its place. That
         # also makes the journal and syncing to disk unnecessary while building.
+        # A killed build leaves its file behind; the build lock is held, so no
+        # other build is writing such files and they can be removed.
+        for stale_build_path in glob.glob(f"{glob.escape(cache_path)}.*.building"):
+            try:
+                os.remove(stale_build_path)
+            except OSError:
+                pass
         build_fd, build_path = tempfile.mkstemp(
-            dir=os.path.dirname(cache_path), suffix=".building"
+            dir=os.path.dirname(cache_path),
+            prefix=f"{os.path.basename(cache_path)}.",
+            suffix=".building",
         )
         os.close(build_fd)
         # The building thread's connection writes the new file; the build's

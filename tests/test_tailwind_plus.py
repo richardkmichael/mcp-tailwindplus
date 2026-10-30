@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -609,6 +610,20 @@ class TestSQLiteCache:
         parallel = contents(tmp_path / "parallel")
 
         assert parallel == serial
+
+    def test_build_removes_files_of_killed_builds(self, data_file, tmp_path):
+        """A build killed before it could clean up leaves its partial file;
+        the next build removes it."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        cache_path = TailwindPlus._get_cache_path(data_file, str(cache_dir))
+        killed_build = cache_dir / f"{os.path.basename(cache_path)}.x1y2z3.building"
+        killed_build.write_bytes(b"partial")
+
+        TailwindPlus(data_file, cache_dir=str(cache_dir)).close()
+
+        assert not killed_build.exists()
+        assert os.path.exists(cache_path)
 
     def test_servers_starting_at_once_build_once(
         self, data_file, tmp_path, monkeypatch
