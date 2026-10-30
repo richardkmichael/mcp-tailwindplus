@@ -5,6 +5,7 @@ import threading
 import time
 from array import array
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 
 import pytest
 
@@ -651,6 +652,54 @@ class TestSQLiteCache:
 
         assert len(builds) == 1
         assert names[0] == names[1] != []
+
+    @pytest.mark.parametrize("failure", ["cannot start", "breaks"])
+    def test_build_without_workers(
+        self, data_file, tmp_path, monkeypatch, caplog, failure
+    ):
+        """When worker processes cannot start, or fail while parsing, code is
+        parsed in the building process instead."""
+        with TailwindPlus(data_file, cache_dir=str(tmp_path / "serial")) as serial:
+            expected = serial.search_components_by_code(
+                serial.get_component_by_full_name(
+                    TestCodeSearch.EMAIL_INPUT,
+                    Framework.HTML,
+                    TailwindVersion.V4,
+                    Mode.LIGHT,
+                ).code,
+                Framework.HTML,
+            )
+
+        class FailingPool:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def map(self, *args, **kwargs):
+                if failure == "cannot start":
+                    raise BlockingIOError(35, "Resource temporarily unavailable")
+
+                def broken():
+                    raise BrokenProcessPool("a worker died")
+                    yield
+
+                return broken()
+
+            def shutdown(self, **kwargs):
+                pass
+
+        monkeypatch.setattr(tailwind_plus, "ProcessPoolExecutor", FailingPool)
+        monkeypatch.setattr(tailwind_plus, "_PARALLEL_PARSING_MIN_SNIPPETS", 1)
+        with TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")) as tp:
+            code = tp.get_component_by_full_name(
+                TestCodeSearch.EMAIL_INPUT,
+                Framework.HTML,
+                TailwindVersion.V4,
+                Mode.LIGHT,
+            ).code
+            assert tp.search_components_by_code(code, Framework.HTML) == expected
+            assert tp.search_component_names("you@example")
+
+        assert "Parsing component code in this process" in caplog.text
 
     def test_interrupted_build_leaves_no_cache(self, data_file, tmp_path, monkeypatch):
         """A build that fails leaves neither a cache nor its partial file, only

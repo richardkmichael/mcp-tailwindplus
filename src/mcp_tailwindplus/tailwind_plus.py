@@ -1,6 +1,7 @@
 import glob
 import hashlib
 import json
+import logging
 import math
 import multiprocessing
 import os
@@ -13,6 +14,7 @@ from array import array
 from collections import defaultdict
 from collections.abc import Callable, Iterator
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -30,6 +32,8 @@ from platformdirs import user_cache_dir
 
 from .component_structure import extract_structure
 from .component_text import extract_parts, extract_prose
+
+logger = logging.getLogger(__name__)
 
 # Bump when the cache's tables change, so caches built by older code are rebuilt.
 CACHE_FORMAT = "3"
@@ -1046,16 +1050,22 @@ def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
 
     One CPU is left for the caller's work. Workers are spawned, not forked,
     because forking a process that may run threads can deadlock the child.
+    Yields None, too, when the pool cannot be created.
     """
     if snippet_count < _PARALLEL_PARSING_MIN_SNIPPETS:
         yield None
         return
-    pool = ProcessPoolExecutor(
-        max_workers=max(1, (os.process_cpu_count() or 2) - 1),
-        mp_context=multiprocessing.get_context("spawn"),
-        initializer=_exit_with_parent,
-        initargs=(os.getpid(),),
-    )
+    try:
+        pool = ProcessPoolExecutor(
+            max_workers=max(1, (os.process_cpu_count() or 2) - 1),
+            mp_context=multiprocessing.get_context("spawn"),
+            initializer=_exit_with_parent,
+            initargs=(os.getpid(),),
+        )
+    except OSError as error:
+        _warn_parsing_in_process(error)
+        yield None
+        return
     try:
         yield pool
     finally:
@@ -1084,7 +1094,8 @@ class _Mapped[Result]:
     once per distinct tuple.
 
     With a worker pool, they are computed in the workers while the caller does
-    other work; without one, when they are asked for.
+    other work; without one, or when its workers cannot start or fail, when
+    they are asked for.
     """
 
     def __init__(
@@ -1098,23 +1109,39 @@ class _Mapped[Result]:
         self._unique_arguments = list(dict.fromkeys(arguments))
         self._pending = None
         if pool is not None and self._unique_arguments:
-            # Submits every task now; the results are collected in order.
-            self._pending = pool.map(
-                function, *zip(*self._unique_arguments, strict=True), chunksize=64
-            )
+            # Submits every task now, starting the workers; the results are
+            # collected in order.
+            try:
+                self._pending = pool.map(
+                    function, *zip(*self._unique_arguments, strict=True), chunksize=64
+                )
+            except (OSError, BrokenProcessPool) as error:
+                _warn_parsing_in_process(error)
 
     def results(self) -> list[Result]:
         """Return the result for each argument tuple, in order."""
-        if self._pending is None:
+        unique_results = None
+        if self._pending is not None:
+            try:
+                unique_results = list(self._pending)
+            except BrokenProcessPool as error:
+                _warn_parsing_in_process(error)
+        if unique_results is None:
             unique_results = [
                 self._function(*arguments) for arguments in self._unique_arguments
             ]
-        else:
-            unique_results = list(self._pending)
         results_by_arguments = dict(
             zip(self._unique_arguments, unique_results, strict=True)
         )
         return [results_by_arguments[arguments] for arguments in self._arguments]
+
+
+def _warn_parsing_in_process(error: BaseException) -> None:
+    logger.warning(
+        "Parsing component code in this process; worker processes could not "
+        "start or failed: %s",
+        error,
+    )
 
 
 def _split_text(text: str) -> list[str]:
