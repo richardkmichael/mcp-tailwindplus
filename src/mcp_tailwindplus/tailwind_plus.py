@@ -322,6 +322,16 @@ class TailwindPlus:
             )
             """
         )
+        # A component's frameworks share its previews, so each distinct preview
+        # is stored once.
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS previews (
+                id INTEGER PRIMARY KEY,
+                html TEXT NOT NULL
+            )
+            """
+        )
         self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS snippets (
@@ -331,7 +341,7 @@ class TailwindPlus:
                 mode TEXT NOT NULL,
                 language TEXT NOT NULL,
                 code TEXT NOT NULL,
-                preview TEXT NOT NULL,
+                preview_id INTEGER NOT NULL REFERENCES previews (id),
                 supports_dark_mode INTEGER NOT NULL,
                 PRIMARY KEY (full_name, framework, tailwind_version, mode)
             )
@@ -383,6 +393,7 @@ class TailwindPlus:
         """Traverse the JSON tree, insert snippets into the DB, and index each
         component for search and each snippet by its structure."""
         structures: dict[str, list[tuple[tuple[str, str, str], frozenset[str]]]] = {}
+        preview_ids: dict[str, int] = {}
 
         def traverse(obj: dict, path: list[str] | None = None):
             if path is None:
@@ -399,11 +410,19 @@ class TailwindPlus:
                         if mode is None:
                             mode = "none"
 
+                        preview_id = preview_ids.get(snippet["preview"])
+                        if preview_id is None:
+                            preview_id = self._db.execute(
+                                "INSERT INTO previews (html) VALUES (?)",
+                                (snippet["preview"],),
+                            ).lastrowid
+                            preview_ids[snippet["preview"]] = preview_id
+
                         self._db.execute(
                             """
                             INSERT INTO snippets
                                 (full_name, framework, tailwind_version, mode,
-                                 language, code, preview, supports_dark_mode)
+                                 language, code, preview_id, supports_dark_mode)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
@@ -413,7 +432,7 @@ class TailwindPlus:
                                 mode,
                                 snippet["language"],
                                 snippet["code"],
-                                snippet["preview"],
+                                preview_id,
                                 1 if snippet["supportsDarkMode"] else 0,
                             ),
                         )
@@ -576,8 +595,11 @@ class TailwindPlus:
     ) -> dict | None:
         """Retrieve a single snippet from the DB."""
         row = self._db.execute(
-            "SELECT * FROM snippets WHERE full_name=? AND framework=? "
-            "AND tailwind_version=? AND mode=?",
+            """
+            SELECT snippets.*, previews.html AS preview
+            FROM snippets JOIN previews ON previews.id = snippets.preview_id
+            WHERE full_name=? AND framework=? AND tailwind_version=? AND mode=?
+            """,
             (full_name, framework.value, tailwind_version.value, mode.value),
         ).fetchone()
         return dict(row) if row else None
