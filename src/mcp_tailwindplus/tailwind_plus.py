@@ -336,6 +336,11 @@ class TailwindPlus:
             self._store_metadata(data_file)
             self._db.commit()
             self._db.close()
+            # Without the journal or syncing, the file's pages may reach the
+            # disk after the rename does; a crash in between would leave a cache
+            # with its metadata but not all its pages.
+            with open(build_path, "rb") as build_file:
+                os.fsync(build_file.fileno())
             os.replace(build_path, cache_path)
         except BaseException:
             self._db.close()
