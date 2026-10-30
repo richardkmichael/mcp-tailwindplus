@@ -1,10 +1,12 @@
 import json
 import sqlite3
 import time
+from array import array
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from mcp_tailwindplus import tailwind_plus
 from mcp_tailwindplus.tailwind_plus import (
     MAX_RESULT_PROSE_CHARS,
     MAX_SEARCH_RESULTS,
@@ -557,6 +559,55 @@ class TestCodeSearch:
 
 class TestSQLiteCache:
     """Test SQLite cache creation, reuse, and rebuild."""
+
+    def test_parallel_build_matches_serial_build(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """Code parsed in worker processes indexes the same as code parsed in
+        the building process.
+
+        Token ids follow the iteration order of token sets, which varies between
+        processes, so tokens are compared by what they are.
+        """
+        queries = {
+            "search": "SELECT * FROM component_search",
+            "snippets": """
+                SELECT full_name, framework, tailwind_version, mode,
+                    ROUND(weight, 9)
+                FROM structure_snippets
+            """,
+            "tokens": """
+                SELECT framework, token, weight FROM structure_tokens
+            """,
+        }
+
+        def token_snippets(db):
+            """Each token with the snippets having it, by their variants."""
+            variants = {
+                row["id"]: (row["full_name"], row["tailwind_version"], row["mode"])
+                for row in db.execute("SELECT * FROM structure_snippets")
+            }
+            for row in db.execute("SELECT * FROM structure_tokens"):
+                snippet_ids = array(tailwind_plus._SNIPPET_ID_TYPECODE)
+                snippet_ids.frombytes(row["snippet_ids"])
+                for snippet_id in snippet_ids:
+                    yield row["framework"], row["token"], *variants[snippet_id]
+
+        def contents(cache_dir):
+            with TailwindPlus(data_file, cache_dir=str(cache_dir)) as tailwind_plus:
+                return {
+                    "token snippets": sorted(token_snippets(tailwind_plus._db)),
+                    **{
+                        name: sorted(map(tuple, tailwind_plus._db.execute(query)))
+                        for name, query in queries.items()
+                    },
+                }
+
+        serial = contents(tmp_path / "serial")
+        monkeypatch.setattr(tailwind_plus, "_PARALLEL_PARSING_MIN_SNIPPETS", 1)
+        parallel = contents(tmp_path / "parallel")
+
+        assert parallel == serial
 
     def test_interrupted_build_leaves_no_cache(self, data_file, tmp_path, monkeypatch):
         """A build that fails leaves neither a cache nor its partial file."""

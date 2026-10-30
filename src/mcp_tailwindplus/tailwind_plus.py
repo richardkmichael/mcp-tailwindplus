@@ -1,6 +1,7 @@
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import re
 import sqlite3
@@ -8,6 +9,9 @@ import tempfile
 import threading
 from array import array
 from collections import defaultdict
+from collections.abc import Callable, Iterator
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -40,6 +44,10 @@ _SEARCH_COLUMN_WEIGHTS = (10.0, 5.0, 2.0, 1.0)
 
 # Separates prose fragments and parts in the search index.
 _TEXT_SEPARATOR = "\n"
+
+# Below this many snippets, parsing their code takes less time than starting
+# worker processes to parse it.
+_PARALLEL_PARSING_MIN_SNIPPETS = 1000
 
 # Snippet ids in the structure index are packed as unsigned 32-bit integers, in
 # the machine's byte order; caches are built and read on the same machine.
@@ -392,88 +400,89 @@ class TailwindPlus:
         )
 
     def _populate_db(self, tailwindplus_data: dict, descriptions: dict) -> None:
-        """Traverse the JSON tree, insert snippets into the DB, and index each
-        component for search and each snippet by its structure."""
-        structures: dict[str, list[tuple[tuple[str, str, str], frozenset[str]]]] = {}
-        preview_ids: dict[str, int] = {}
+        """Insert snippets into the DB, and index each component for search and
+        each snippet by its structure.
 
-        def traverse(obj: dict, path: list[str] | None = None):
-            if path is None:
-                path = []
-            for key, value in obj.items():
-                current_path = path + [key]
+        Code is parsed for searchable text and structure, in worker processes
+        when there is much of it, while the snippets are written.
+        """
+        components = list(_components(tailwindplus_data))
+        snippets = [
+            (full_name, snippet)
+            for full_name, component_snippets in components
+            for snippet in component_snippets
+        ]
+        with _worker_pool(len(snippets)) as pool:
+            texts = _Mapped(
+                _component_text,
+                [
+                    _text_code(component_snippets)
+                    for _, component_snippets in components
+                ],
+                pool,
+            )
+            structures = _Mapped(
+                extract_structure,
+                [
+                    (snippet["code"], snippet["language"] == Language.JSX.value)
+                    for _, snippet in snippets
+                ],
+                pool,
+            )
 
-                if isinstance(value, dict) and "snippets" in value:
-                    component_name = ".".join(current_path)
-                    for snippet in value["snippets"]:
-                        framework = snippet["name"]  # html/react/vue
-                        tailwind_version = str(snippet["version"])  # "3" or "4"
-                        mode = snippet["mode"]
-                        if mode is None:
-                            mode = "none"
+            preview_ids: dict[str, int] = {}
+            for full_name, snippet in snippets:
+                preview_id = preview_ids.get(snippet["preview"])
+                if preview_id is None:
+                    preview_id = self._db.execute(
+                        "INSERT INTO previews (html) VALUES (?)",
+                        (snippet["preview"],),
+                    ).lastrowid
+                    preview_ids[snippet["preview"]] = preview_id
 
-                        preview_id = preview_ids.get(snippet["preview"])
-                        if preview_id is None:
-                            preview_id = self._db.execute(
-                                "INSERT INTO previews (html) VALUES (?)",
-                                (snippet["preview"],),
-                            ).lastrowid
-                            preview_ids[snippet["preview"]] = preview_id
+                self._db.execute(
+                    """
+                    INSERT INTO snippets
+                        (full_name, framework, tailwind_version, mode,
+                         language, code, preview_id, supports_dark_mode)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        full_name,
+                        *_variant(snippet),
+                        snippet["language"],
+                        snippet["code"],
+                        preview_id,
+                        1 if snippet["supportsDarkMode"] else 0,
+                    ),
+                )
 
-                        self._db.execute(
-                            """
-                            INSERT INTO snippets
-                                (full_name, framework, tailwind_version, mode,
-                                 language, code, preview_id, supports_dark_mode)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                component_name,
-                                framework,
-                                tailwind_version,
-                                mode,
-                                snippet["language"],
-                                snippet["code"],
-                                preview_id,
-                                1 if snippet["supportsDarkMode"] else 0,
-                            ),
-                        )
-                        structures.setdefault(framework, []).append(
-                            (
-                                (component_name, tailwind_version, mode),
-                                extract_structure(
-                                    snippet["code"],
-                                    jsx=snippet["language"] == Language.JSX.value,
-                                ),
-                            )
-                        )
-                    self._index_component(
-                        component_name, value["snippets"], descriptions
-                    )
-                elif isinstance(value, dict):
-                    traverse(value, current_path)
+            for (full_name, _), (parts, prose) in zip(
+                components, texts.results(), strict=True
+            ):
+                self._index_component(full_name, parts, prose, descriptions)
 
-        traverse(tailwindplus_data)
-        self._index_structure(structures)
+            tokens = structures.results()
+
+        tokens_by_framework: dict[
+            str, list[tuple[tuple[str, str, str], frozenset[str]]]
+        ] = {}
+        for (full_name, snippet), snippet_tokens in zip(snippets, tokens, strict=True):
+            framework, tailwind_version, mode = _variant(snippet)
+            tokens_by_framework.setdefault(framework, []).append(
+                ((full_name, tailwind_version, mode), snippet_tokens)
+            )
+        self._index_structure(tokens_by_framework)
 
     def _index_component(
-        self, full_name: str, snippets: list[dict], descriptions: dict
+        self, full_name: str, parts: list[str], prose: list[str], descriptions: dict
     ) -> None:
-        """Add a component's searchable text to the search index.
+        """Add a component's parts, prose and description to the search index.
 
-        Prose and parts come from one snippet per framework, since they are the
-        same across frameworks and modes; Tailwind 4 snippets are preferred. The description is the subcategory's description and
-        introduction. Product descriptions are left out: they list examples for
-        the whole product, so they would match nearly every component.
+        The description is the subcategory's description and introduction.
+        Product descriptions are left out: they list examples for the whole
+        product, so they would match nearly every component.
         """
-
-        def code(framework: str) -> str:
-            by_version = {
-                str(s["version"]): s["code"] for s in snippets if s["name"] == framework
-            }
-            return by_version.get("4", by_version.get("3", ""))
-
-        html, react = code("html"), code("react")
         subcategory = ".".join(full_name.split(".")[:3])
         subcategory_text = descriptions.get("subcategories", {}).get(subcategory, {})
         description = " ".join(
@@ -492,9 +501,9 @@ class TailwindPlus:
             """,
             (
                 full_name,
-                _TEXT_SEPARATOR.join(extract_parts(html, react)),
+                _TEXT_SEPARATOR.join(parts),
                 description,
-                _TEXT_SEPARATOR.join(extract_prose(html)),
+                _TEXT_SEPARATOR.join(prose),
             ),
         )
 
@@ -952,6 +961,104 @@ class TailwindPlus:
         )
 
         return snippet["preview"]
+
+
+def _components(tailwindplus_data: dict) -> Iterator[tuple[str, list[dict]]]:
+    """Yield each component's full name and snippets from the data's tree."""
+
+    def walk(node: dict, path: list[str]) -> Iterator[tuple[str, list[dict]]]:
+        for key, value in node.items():
+            if isinstance(value, dict) and "snippets" in value:
+                yield ".".join([*path, key]), value["snippets"]
+            elif isinstance(value, dict):
+                yield from walk(value, [*path, key])
+
+    return walk(tailwindplus_data, [])
+
+
+def _variant(snippet: dict) -> tuple[str, str, str]:
+    """Return a snippet's framework, Tailwind version and mode as stored."""
+    return snippet["name"], str(snippet["version"]), snippet["mode"] or "none"
+
+
+def _text_code(snippets: list[dict]) -> tuple[str, str]:
+    """Return the HTML and React code a component's searchable text comes from.
+
+    Prose and parts are the same across frameworks and modes, so they come from
+    one snippet per framework; Tailwind 4 snippets are preferred.
+    """
+
+    def code(framework: str) -> str:
+        by_version = {
+            str(s["version"]): s["code"] for s in snippets if s["name"] == framework
+        }
+        return by_version.get("4", by_version.get("3", ""))
+
+    return code("html"), code("react")
+
+
+def _component_text(html: str, react: str) -> tuple[list[str], list[str]]:
+    """Return a component's parts and prose."""
+    return extract_parts(html, react), extract_prose(html)
+
+
+@contextmanager
+def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
+    """Yield worker processes for parsing code, or None when there are too few
+    snippets to repay starting them.
+
+    One CPU is left for the caller's work. Workers are spawned, not forked,
+    because forking a process that may run threads can deadlock the child.
+    """
+    if snippet_count < _PARALLEL_PARSING_MIN_SNIPPETS:
+        yield None
+        return
+    pool = ProcessPoolExecutor(
+        max_workers=max(1, (os.process_cpu_count() or 2) - 1),
+        mp_context=multiprocessing.get_context("spawn"),
+    )
+    try:
+        yield pool
+    finally:
+        pool.shutdown(cancel_futures=True)
+
+
+class _Mapped[Result]:
+    """A function's results for each of a list of argument tuples, computed
+    once per distinct tuple.
+
+    With a worker pool, they are computed in the workers while the caller does
+    other work; without one, when they are asked for.
+    """
+
+    def __init__(
+        self,
+        function: Callable[..., Result],
+        arguments: list[tuple],
+        pool: ProcessPoolExecutor | None,
+    ) -> None:
+        self._function = function
+        self._arguments = arguments
+        self._unique_arguments = list(dict.fromkeys(arguments))
+        self._pending = None
+        if pool is not None and self._unique_arguments:
+            # Submits every task now; the results are collected in order.
+            self._pending = pool.map(
+                function, *zip(*self._unique_arguments, strict=True), chunksize=64
+            )
+
+    def results(self) -> list[Result]:
+        """Return the result for each argument tuple, in order."""
+        if self._pending is None:
+            unique_results = [
+                self._function(*arguments) for arguments in self._unique_arguments
+            ]
+        else:
+            unique_results = list(self._pending)
+        results_by_arguments = dict(
+            zip(self._unique_arguments, unique_results, strict=True)
+        )
+        return [results_by_arguments[arguments] for arguments in self._arguments]
 
 
 def _split_text(text: str) -> list[str]:
