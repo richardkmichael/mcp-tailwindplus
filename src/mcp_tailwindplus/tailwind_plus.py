@@ -8,6 +8,7 @@ import re
 import sqlite3
 import tempfile
 import threading
+import time
 from array import array
 from collections import defaultdict
 from collections.abc import Callable, Iterator
@@ -1052,11 +1053,30 @@ def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
     pool = ProcessPoolExecutor(
         max_workers=max(1, (os.process_cpu_count() or 2) - 1),
         mp_context=multiprocessing.get_context("spawn"),
+        initializer=_exit_with_parent,
+        initargs=(os.getpid(),),
     )
     try:
         yield pool
     finally:
         pool.shutdown(cancel_futures=True)
+
+
+def _exit_with_parent(parent_pid: int) -> None:
+    """Start a thread that ends this worker process once its parent is gone.
+
+    A server killed outright, as by SIGKILL, cannot shut its workers down,
+    and they would otherwise wait for work indefinitely. An orphaned process
+    is given a new parent, so its parent process id changes; on Windows it
+    does not, and workers outlive a killed server as before.
+    """
+
+    def watch() -> None:
+        while os.getppid() == parent_pid:
+            time.sleep(1)
+        os._exit(1)
+
+    threading.Thread(target=watch, daemon=True).start()
 
 
 class _Mapped[Result]:
