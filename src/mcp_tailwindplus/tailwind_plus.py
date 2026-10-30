@@ -35,6 +35,8 @@ from .component_text import extract_parts_and_prose
 
 logger = logging.getLogger(__name__)
 
+_CACHE_FILE_PREFIX = "tailwindplus_components_cache_"
+
 # Bump when the cache's tables change, so caches built by older code are rebuilt.
 CACHE_FORMAT = "3"
 
@@ -186,6 +188,7 @@ class TailwindPlus:
                 # Another server may have built the cache while this one waited.
                 if self._cache_is_stale(self._cache_path, data_file):
                     self._build_cache(data_file, self._cache_path)
+                    self._remove_stale_caches(self._cache_path)
         self._load_metadata_from_db()
 
         self._component_names = self._load_component_names()
@@ -244,7 +247,50 @@ class TailwindPlus:
         path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:16]
         if cache_dir is None:
             cache_dir = user_cache_dir("mcp-tailwindplus")
-        return os.path.join(cache_dir, f"tailwindplus_components_cache_{path_hash}.db")
+        return os.path.join(cache_dir, f"{_CACHE_FILE_PREFIX}{path_hash}.db")
+
+    @classmethod
+    def _remove_stale_caches(cls, cache_path: str) -> None:
+        """Remove the other caches beside a cache that are stale: built by an
+        older version, or for a data file that has changed or is gone.
+
+        Each data file has its own cache, so a newly downloaded data file
+        would otherwise leave the previous file's cache behind. Caches of
+        unchanged data files are kept, since other servers may use them.
+        """
+        pattern = os.path.join(
+            glob.escape(os.path.dirname(cache_path)), f"{_CACHE_FILE_PREFIX}*.db"
+        )
+        # The pattern's directory is the cache's own, so the cache's path is
+        # listed exactly as given.
+        for other_cache_path in glob.glob(pattern):
+            if other_cache_path == cache_path:
+                continue
+            data_file = cls._cache_data_file(other_cache_path)
+            if data_file is None or cls._cache_is_stale(other_cache_path, data_file):
+                try:
+                    os.remove(other_cache_path)
+                except OSError:
+                    continue
+                logger.info("Removed stale cache %s", other_cache_path)
+
+    @staticmethod
+    def _cache_data_file(cache_path: str) -> str | None:
+        """Return the data file a cache was built from, or None when the cache
+        cannot be read."""
+        try:
+            db = TailwindPlus._connect_readonly(cache_path)
+        except sqlite3.DatabaseError:
+            return None
+        try:
+            row = db.execute(
+                "SELECT value FROM metadata WHERE key = 'source_file'"
+            ).fetchone()
+            return row["value"] if row else None
+        except sqlite3.DatabaseError:
+            return None
+        finally:
+            db.close()
 
     @staticmethod
     def _cache_is_stale(cache_path: str, data_file: str) -> bool:

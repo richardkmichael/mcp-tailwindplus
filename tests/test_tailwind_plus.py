@@ -626,6 +626,31 @@ class TestSQLiteCache:
         assert not killed_build.exists()
         assert os.path.exists(cache_path)
 
+    def test_build_removes_stale_caches(self, sample_data, tmp_path):
+        """A build removes the caches of data files that are gone or have
+        changed, and keeps those of unchanged data files."""
+        cache_dir = str(tmp_path / "cache")
+        data_files = {}
+        for name in ("gone", "changed", "unchanged", "current"):
+            data_files[name] = tmp_path / f"{name}.json"
+            data_files[name].write_text(json.dumps(sample_data))
+        for name in ("gone", "changed", "unchanged"):
+            TailwindPlus(str(data_files[name]), cache_dir=cache_dir).close()
+        data_files["gone"].unlink()
+        data_files["changed"].write_text(json.dumps(sample_data) + " ")
+
+        TailwindPlus(str(data_files["current"]), cache_dir=cache_dir).close()
+
+        def cache_exists(name):
+            return os.path.exists(
+                TailwindPlus._get_cache_path(str(data_files[name]), cache_dir)
+            )
+
+        assert not cache_exists("gone")
+        assert not cache_exists("changed")
+        assert cache_exists("unchanged")
+        assert cache_exists("current")
+
     def test_servers_starting_at_once_build_once(
         self, data_file, tmp_path, monkeypatch
     ):
