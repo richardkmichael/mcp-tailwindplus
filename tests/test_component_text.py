@@ -1,4 +1,8 @@
-from mcp_tailwindplus.component_text import extract_parts, extract_prose
+from mcp_tailwindplus.component_text import (
+    extract_parts,
+    extract_parts_and_prose,
+    extract_prose,
+)
 
 FIELD_HTML = """
 <div>
@@ -98,3 +102,11 @@ class TestExtractParts:
         parts = extract_parts(DIALOG_HTML, DIALOG_REACT)
         assert parts.count("dialog") == 1
         assert parts.count("dialog panel") == 1
+
+
+def test_parts_and_prose_together():
+    """Extracting both at once gives what extracting each does."""
+    assert extract_parts_and_prose(DIALOG_HTML, DIALOG_REACT) == (
+        extract_parts(DIALOG_HTML, DIALOG_REACT),
+        extract_prose(DIALOG_HTML),
+    )

@@ -130,6 +130,17 @@ def extract_parts(html: str, react: str) -> list[str]:
     - semantic HTML elements, such as `nav` or `table`
     - short comments labeling a part, such as "Mobile menu"
     """
+    return _parts(_parse(html), react)
+
+
+def extract_parts_and_prose(html: str, react: str) -> tuple[list[str], list[str]]:
+    """Return a component's parts and prose, as extract_parts and
+    extract_prose do, parsing the HTML code once."""
+    parser = _parse(html)
+    return _parts(parser, react), _unique(parser.prose)
+
+
+def _parts(parser: _ComponentParser, react: str) -> list[str]:
     imported = [
         # `ChevronDownIcon as ChevronIcon` imports ChevronDownIcon.
         name.split(" as ")[0].strip()
@@ -139,4 +150,4 @@ def extract_parts(html: str, react: str) -> list[str]:
         if name.strip()
     ]
     words = [" ".join(_CAMEL_CASE_WORD.findall(name)).lower() for name in imported]
-    return _unique(words + _parse(html).parts)
+    return _unique(words + parser.parts)

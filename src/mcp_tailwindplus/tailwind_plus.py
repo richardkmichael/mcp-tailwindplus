@@ -31,7 +31,7 @@ from packaging.version import Version
 from platformdirs import user_cache_dir
 
 from .component_structure import extract_structure
-from .component_text import extract_parts, extract_prose
+from .component_text import extract_parts_and_prose
 
 logger = logging.getLogger(__name__)
 
@@ -442,7 +442,7 @@ class TailwindPlus:
         ]
         with _worker_pool(len(snippets)) as pool:
             texts = _Mapped(
-                _component_text,
+                extract_parts_and_prose,
                 [
                     _text_code(component_snippets)
                     for _, component_snippets in components
@@ -1041,11 +1041,6 @@ def _text_code(snippets: list[dict]) -> tuple[str, str]:
         return by_version.get("4", by_version.get("3", ""))
 
     return code("html"), code("react")
-
-
-def _component_text(html: str, react: str) -> tuple[list[str], list[str]]:
-    """Return a component's parts and prose."""
-    return extract_parts(html, react), extract_prose(html)
 
 
 @contextmanager
