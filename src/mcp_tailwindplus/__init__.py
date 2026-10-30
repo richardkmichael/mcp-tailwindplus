@@ -181,9 +181,14 @@ def _project_setting[SettingT: Enum](
     setting_type: type[SettingT],
     choices: list[str],
 ) -> SettingT | None:
-    """Return a project setting from the command line, else the environment."""
+    """Return a project setting from the command line, else the environment.
+
+    An empty variable counts as unset, as an empty MCP_TAILWINDPLUS_DATA does:
+    an MCP client's configuration may pass a variable through even when it is
+    not set.
+    """
     value = cli_value or os.environ.get(env_name)
-    if value is None:
+    if not value:
         return None
     if value not in choices:
         parser.error(f"{env_name} must be one of {', '.join(choices)}; got {value!r}")

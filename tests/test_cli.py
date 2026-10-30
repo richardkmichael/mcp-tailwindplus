@@ -130,6 +130,10 @@ class TestProjectSetting:
         monkeypatch.delenv(self.ENV_NAME, raising=False)
         assert self._resolve(None) is None
 
+    def test_empty_environment_is_unset(self, monkeypatch):
+        monkeypatch.setenv(self.ENV_NAME, "")
+        assert self._resolve(None) is None
+
 
 @pytest.fixture
 def data_file(tmp_path):
