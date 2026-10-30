@@ -877,6 +877,97 @@ class TestSQLiteCache:
         assert TailwindPlus._cache_is_stale("/nonexistent/path.db", data_file)
 
 
+class TestBackgroundBuild:
+    """Test building the cache in a separate process."""
+
+    @pytest.fixture
+    def held_build(self, monkeypatch):
+        """Make the server wait for the test's release before taking the build
+        process's report that the cache is built."""
+        release = threading.Event()
+        receive_build_report = tailwind_plus._receive_build_report
+        reports_received = []
+
+        def held_receive_build_report(*args):
+            reports_received.append(True)
+            if len(reports_received) == 2:
+                assert release.wait(timeout=10)
+            return receive_build_report(*args)
+
+        monkeypatch.setattr(
+            tailwind_plus, "_receive_build_report", held_receive_build_report
+        )
+        return release
+
+    def test_methods_wait_for_the_build(self, data_file, tmp_path, held_build):
+        """The constructor returns while the cache builds, and methods wait
+        for the build to finish."""
+        tailwind_plus = TailwindPlus(
+            data_file, cache_dir=str(tmp_path), build_in_background=True
+        )
+        opened = []
+        tailwind_plus.call_when_open(lambda: opened.append(True))
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            names = pool.submit(tailwind_plus.list_component_names)
+            time.sleep(0.1)
+            assert not names.done()
+            assert opened == []
+
+            held_build.set()
+
+            assert len(names.result(timeout=10)) == 4
+        assert opened == [True]
+        tailwind_plus.close()
+
+    def test_failing_callback_leaves_the_cache_open(
+        self, data_file, tmp_path, held_build, caplog
+    ):
+        tailwind_plus = TailwindPlus(
+            data_file, cache_dir=str(tmp_path), build_in_background=True
+        )
+        tailwind_plus.call_when_open(lambda: 1 / 0)
+        held_build.set()
+
+        assert len(tailwind_plus.list_component_names()) == 4
+        tailwind_plus.close()
+
+    def test_failed_build_is_raised_by_methods(self, sample_data, tmp_path, caplog):
+        """A data file that is valid but cannot be built, here because a
+        snippet has no preview, fails the build process, not the start."""
+        snippets = sample_data["tailwindplus"]["Application UI"]["Forms"][
+            "Select Menus"
+        ]["Simple"]["snippets"]
+        del snippets[0]["preview"]
+        path = tmp_path / "no-preview.json"
+        path.write_text(json.dumps(sample_data))
+
+        tailwind_plus = TailwindPlus(
+            str(path), cache_dir=str(tmp_path), build_in_background=True
+        )
+        opened = []
+        tailwind_plus.call_when_open(lambda: opened.append(True))
+
+        with pytest.raises(RuntimeError, match="could not be built: 'preview'"):
+            tailwind_plus.search_component_names("email")
+        assert "The TailwindPlus cache could not be built" in caplog.text
+        assert opened == []
+
+    def test_unsupported_data_file_raises_at_once(self, sample_data, tmp_path):
+        """The data file is checked before the build starts in the
+        background."""
+        sample_data["downloader_version"] = "2.0.0"
+        path = tmp_path / "old.json"
+        path.write_text(json.dumps(sample_data))
+
+        with pytest.raises(ValueError, match="downloader version"):
+            TailwindPlus(str(path), cache_dir=str(tmp_path), build_in_background=True)
+
+    def test_open_cache_calls_back_at_once(self, tailwind_plus_instance):
+        opened = []
+        tailwind_plus_instance.call_when_open(lambda: opened.append(True))
+        assert opened == [True]
+
+
 class TestErrorHandling:
     """Test error handling and suggestions functionality."""
 

@@ -126,7 +126,9 @@ def main():
     from .server import create_server
 
     try:
-        with TailwindPlus(data_file) as tailwind_plus:
+        # Building a cache takes a few seconds; serving starts meanwhile, and
+        # tool calls wait for it.
+        with TailwindPlus(data_file, build_in_background=True) as tailwind_plus:
             mcp_server = create_server(
                 tailwind_plus,
                 version=__version__,

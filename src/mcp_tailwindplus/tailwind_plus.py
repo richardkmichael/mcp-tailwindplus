@@ -18,6 +18,8 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from multiprocessing.connection import Connection
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import Annotated
 
@@ -58,13 +60,13 @@ _SEARCH_COLUMN_WEIGHTS = (10.0, 5.0, 2.0, 1.0)
 # Separates prose fragments and parts in the search index.
 _TEXT_SEPARATOR = "\n"
 
-# Below this many snippets, parsing their code takes less time than starting
-# worker processes to parse it.
-_PARALLEL_PARSING_MIN_SNIPPETS = 1000
-
 # Snippet ids in the structure index are packed as unsigned 32-bit integers, in
 # the machine's byte order; caches are built and read on the same machine.
 _SNIPPET_ID_TYPECODE = "I"
+
+# Below this many snippets, parsing their code takes less time than starting
+# worker processes to parse it.
+_PARALLEL_PARSING_MIN_SNIPPETS = 1000
 
 # Marks the matched terms of a description in search queries.
 _MATCH_START, _MATCH_END = "\x02", "\x03"
@@ -177,21 +179,133 @@ class ComponentNotFoundError(Exception):
 
 
 class TailwindPlus:
-    def __init__(self, data_file: str, cache_dir: str | None = None):
-        self._cache_path = self._get_cache_path(data_file, cache_dir)
+    def __init__(
+        self,
+        data_file: str,
+        cache_dir: str | None = None,
+        build_in_background: bool = False,
+    ):
+        """Open the cache of a data file, building it first if it is missing or
+        stale.
+
+        The data file is read and checked before building, so an unreadable
+        or unsupported data file raises here. With build_in_background, the
+        cache is then built by a separate process, whose memory is returned to
+        the system when it exits, and methods wait for it; if the build fails,
+        they raise an error naming its cause.
+        """
+        self._init_state(self._get_cache_path(data_file, cache_dir))
+
+        if not self._cache_is_stale(self._cache_path, data_file):
+            self._open_cache()
+        elif build_in_background:
+            self._start_build_process(data_file)
+        else:
+            self._build(data_file, self._read_data_file(data_file))
+            self._open_cache()
+
+    def _init_state(self, cache_path: str) -> None:
+        self._cache_path = cache_path
         self._thread = threading.local()
         self._connections: list[sqlite3.Connection] = []
         self._connections_lock = threading.Lock()
+        self._opened = threading.Event()
+        self._open_error: BaseException | None = None
+        self._open_callbacks: list[Callable[[], None]] = []
+        self._open_lock = threading.Lock()
 
-        if self._cache_is_stale(self._cache_path, data_file):
-            with _build_lock(self._cache_path):
-                # Another server may have built the cache while this one waited.
-                if self._cache_is_stale(self._cache_path, data_file):
-                    self._build_cache(data_file, self._cache_path)
-                    self._remove_stale_caches(self._cache_path)
+    @classmethod
+    def _builder(cls, cache_path: str) -> "TailwindPlus":
+        """Return an instance that builds the cache at a path, but has not
+        opened it."""
+        builder = cls.__new__(cls)
+        builder._init_state(cache_path)
+        return builder
+
+    def _build(self, data_file: str, raw_data: dict) -> None:
+        """Build the cache unless another server built it meanwhile."""
+        with _build_lock(self._cache_path):
+            # Another server may have built the cache while this one waited.
+            if self._cache_is_stale(self._cache_path, data_file):
+                self._build_cache(data_file, raw_data)
+                self._remove_stale_caches(self._cache_path)
+
+    def _start_build_process(self, data_file: str) -> None:
+        """Start a process that builds the cache, wait for it to report that
+        the data file is valid, and open the cache in a thread once it is
+        built."""
+        context = multiprocessing.get_context("spawn")
+        reports, report_sender = context.Pipe(duplex=False)
+        # Not a daemon: a server stopping mid-build waits for the cache.
+        process = context.Process(
+            target=_build_in_process,
+            args=(data_file, self._cache_path, report_sender, os.getpid()),
+            name="TailwindPlus cache build",
+        )
+        process.start()
+        report_sender.close()
+
+        error = _receive_build_report(reports, process)
+        if error is not None:
+            process.join()
+            raise error
+        threading.Thread(
+            target=self._open_when_built,
+            args=(reports, process),
+            name="TailwindPlus cache build",
+        ).start()
+
+    def _open_when_built(self, reports: Connection, process: BaseProcess) -> None:
+        """Open the cache once the build process reports it built, logging a
+        failure and then releasing the methods waiting for the cache to raise
+        it."""
+        try:
+            error = _receive_build_report(reports, process)
+            if error is not None:
+                raise error
+            self._open_cache()
+        except BaseException as error:
+            logger.error("The TailwindPlus cache could not be built: %s", error)
+            self._open_error = error
+            self._opened.set()
+        # The process takes a while to exit, freeing its memory and stopping its
+        # workers; the cache is usable meanwhile.
+        process.join()
+
+    def _open_cache(self) -> None:
+        """Load the cache's metadata and component names, then run the
+        callbacks waiting for the cache to open."""
         self._load_metadata_from_db()
-
         self._component_names = self._load_component_names()
+        with self._open_lock:
+            self._opened.set()
+            callbacks, self._open_callbacks = self._open_callbacks, []
+        for callback in callbacks:
+            # The cache is open; a failing callback must not fail its opening.
+            try:
+                callback()
+            except Exception:
+                logger.exception("A function called when the cache opened failed")
+
+    def call_when_open(self, callback: Callable[[], None]) -> None:
+        """Call a function once the cache is open: now, if it is, or in the
+        thread that opens it. If the cache cannot be opened, it is not
+        called."""
+        with self._open_lock:
+            if not self._opened.is_set():
+                self._open_callbacks.append(callback)
+                return
+        if self._open_error is None:
+            callback()
+
+    def _wait_until_open(self) -> None:
+        """Wait for a cache being built in the background, raising if its build
+        failed."""
+        self._opened.wait()
+        if self._open_error is not None:
+            raise RuntimeError(
+                f"The TailwindPlus cache could not be built: {self._open_error}"
+            ) from self._open_error
 
     @property
     def _db(self) -> sqlite3.Connection:
@@ -329,25 +443,24 @@ class TailwindPlus:
             if db is not None:
                 db.close()
 
-    def _build_cache(self, data_file: str, cache_path: str) -> None:
-        """Parse JSON and build the SQLite cache."""
+    @staticmethod
+    def _read_data_file(data_file: str) -> dict:
+        """Parse the data file, checking that its downloader version is
+        supported."""
         # The data file is hundreds of megabytes; orjson parses it about three
         # times faster than the json module.
         raw_data = orjson.loads(Path(data_file).read_bytes())
-
-        # Extract and validate metadata
-        self.version = raw_data["version"]
-        self.downloaded_at = raw_data["downloaded_at"]
-        self.component_count = raw_data["component_count"]
-        self.download_duration = raw_data["download_duration"]
-        self.downloader_version = raw_data["downloader_version"]
-
-        if Version(self.downloader_version) < Version("3.0.0-rc1"):
+        downloader_version = raw_data["downloader_version"]
+        if Version(downloader_version) < Version("3.0.0-rc1"):
             raise ValueError(
                 f"TailwindPlus data requires downloader version >= 3.0.0-rc1 for mode support. "
-                f"Found version {self.downloader_version}. Please regenerate the data file with a newer downloader version."
+                f"Found version {downloader_version}. Please regenerate the data file with a newer downloader version."
             )
+        return raw_data
 
+    def _build_cache(self, data_file: str, raw_data: dict) -> None:
+        """Build the SQLite cache from the parsed data file."""
+        cache_path = self._cache_path
         # Build into a new file that replaces the cache only once complete, so
         # an interrupted build never leaves a partial cache in its place. That
         # also makes the journal and syncing to disk unnecessary while building.
@@ -379,7 +492,7 @@ class TailwindPlus:
             self._populate_db(
                 raw_data["tailwindplus"], raw_data.get("descriptions", {})
             )
-            self._store_metadata(data_file)
+            self._store_metadata(data_file, raw_data)
             self._db.commit()
             self._db.close()
             # Without the journal or syncing, the file's pages may reach the
@@ -635,7 +748,7 @@ class TailwindPlus:
             snippet_rows,
         )
 
-    def _store_metadata(self, data_file: str) -> None:
+    def _store_metadata(self, data_file: str, raw_data: dict) -> None:
         """Store metadata in the DB including source file stats for staleness checks."""
         stat = os.stat(data_file)
         metadata = {
@@ -643,11 +756,11 @@ class TailwindPlus:
             "source_file": os.path.abspath(data_file),
             "source_mtime": str(stat.st_mtime),
             "source_size": str(stat.st_size),
-            "version": self.version,
-            "downloaded_at": self.downloaded_at,
-            "component_count": str(self.component_count),
-            "download_duration": self.download_duration,
-            "downloader_version": self.downloader_version,
+            "version": raw_data["version"],
+            "downloaded_at": raw_data["downloaded_at"],
+            "component_count": str(raw_data["component_count"]),
+            "download_duration": raw_data["download_duration"],
+            "downloader_version": raw_data["downloader_version"],
         }
         for key, value in metadata.items():
             self._db.execute(
@@ -753,6 +866,7 @@ class TailwindPlus:
 
     def list_tailwindplus_information(self) -> dict[str, str | int]:
         """Get TailwindPlus metadata information including version, download date, component count, etc."""
+        self._wait_until_open()
         return {
             "version": self.version,
             "downloaded_at": self.downloaded_at,
@@ -775,6 +889,7 @@ class TailwindPlus:
         'Application UI.Forms.Input Groups.…' but would not list a sibling
         named 'Application UI.Formsets'.
         """
+        self._wait_until_open()
         branch = prefix.strip().rstrip(".").lower()
         return sorted(
             name
@@ -806,6 +921,7 @@ class TailwindPlus:
         subcategory description matched, it comes with the subcategory's first
         result.
         """
+        self._wait_until_open()
         if not 1 <= limit <= MAX_SEARCH_RESULTS:
             raise ValueError(
                 f"limit must be between 1 and {MAX_SEARCH_RESULTS}; got {limit}"
@@ -886,6 +1002,7 @@ class TailwindPlus:
         and the share of their tokens combined that both have, which favors
         variants of the code's size.
         """
+        self._wait_until_open()
         if not 1 <= limit <= MAX_SEARCH_RESULTS:
             raise ValueError(
                 f"limit must be between 1 and {MAX_SEARCH_RESULTS}; got {limit}"
@@ -958,6 +1075,7 @@ class TailwindPlus:
         With no parent levels, return the products. For example, the parent levels
         ['Application UI', 'Forms'] return subcategories such as 'Input Groups'.
         """
+        self._wait_until_open()
         depth = len(parent_levels)
         return sorted(
             {
@@ -995,6 +1113,7 @@ class TailwindPlus:
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
+        self._wait_until_open()
         snippet = self._get_validated_snippet(
             full_name, framework, tailwind_version, mode
         )
@@ -1029,6 +1148,7 @@ class TailwindPlus:
         If the component is not found, raises ComponentNotFoundError with up to 5
         suggested component names based on partial matches.
         """
+        self._wait_until_open()
         snippet = self._get_validated_snippet(
             full_name, framework, tailwind_version, mode
         )
@@ -1117,13 +1237,60 @@ def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
         pool.shutdown(cancel_futures=True)
 
 
-def _exit_with_parent(parent_pid: int) -> None:
-    """Start a thread that ends this worker process once its parent is gone.
+def _build_in_process(
+    data_file: str, cache_path: str, reports: Connection, parent_pid: int
+) -> None:
+    """Build a cache, run in the process the server starts for it.
 
-    A server killed outright, as by SIGKILL, cannot shut its workers down,
-    and they would otherwise wait for work indefinitely. An orphaned process
-    is given a new parent, so its parent process id changes; on Windows it
-    does not, and workers outlive a killed server as before.
+    It reports to the server twice, once the data file is read and checked
+    and once the cache is built: None for success, or the exception.
+    """
+    _exit_with_parent(parent_pid)
+    builder = TailwindPlus._builder(cache_path)
+    try:
+        raw_data = TailwindPlus._read_data_file(data_file)
+    except Exception as error:
+        _send_build_report(reports, error)
+        return
+    _send_build_report(reports, None)
+    try:
+        builder._build(data_file, raw_data)
+    except Exception as error:
+        _send_build_report(reports, error)
+        return
+    _send_build_report(reports, None)
+
+
+def _send_build_report(reports: Connection, error: Exception | None) -> None:
+    try:
+        reports.send(error)
+    except Exception:
+        # An exception that cannot be pickled is reported by its text.
+        reports.send(RuntimeError(f"{type(error).__name__}: {error}"))
+
+
+def _receive_build_report(
+    reports: Connection, process: BaseProcess
+) -> Exception | None:
+    """Return the build process's next report: None for success, or the
+    exception it reported."""
+    try:
+        return reports.recv()
+    except EOFError:
+        process.join()
+        return RuntimeError(
+            f"The cache build process exited with status {process.exitcode}"
+        )
+
+
+def _exit_with_parent(parent_pid: int) -> None:
+    """Start a thread that ends this process once its parent is gone.
+
+    A server killed outright, as by SIGKILL, cannot stop its cache build or
+    the build's workers, and they would otherwise run, or wait for work,
+    indefinitely. An orphaned process is given a new parent, so its parent
+    process id changes; on Windows it does not, and the processes outlive a
+    killed server.
     """
 
     def watch() -> None:

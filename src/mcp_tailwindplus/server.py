@@ -229,19 +229,23 @@ def create_server(
     )
     component_preview_uri = f"{component_code_uri}/preview"
 
-    unaddressable_names = [
-        name
-        for name in tailwind_plus_instance.list_component_names()
-        if name.count(".") != 3 or "/" in name
-    ]
-    if unaddressable_names:
-        logger.warning(
-            "%d component names are not product.category.subcategory.component "
-            "without '/', so twplus:// resources cannot address them; tools still "
-            "can: %s",
-            len(unaddressable_names),
-            ", ".join(unaddressable_names),
-        )
+    def warn_about_unaddressable_names() -> None:
+        unaddressable_names = [
+            name
+            for name in tailwind_plus_instance.list_component_names()
+            if name.count(".") != 3 or "/" in name
+        ]
+        if unaddressable_names:
+            logger.warning(
+                "%d component names are not product.category.subcategory.component "
+                "without '/', so twplus:// resources cannot address them; tools "
+                "still can: %s",
+                len(unaddressable_names),
+                ", ".join(unaddressable_names),
+            )
+
+    # The cache may still be building, and serving need not wait for it.
+    tailwind_plus_instance.call_when_open(warn_about_unaddressable_names)
 
     def read_component_code(
         product: str,
