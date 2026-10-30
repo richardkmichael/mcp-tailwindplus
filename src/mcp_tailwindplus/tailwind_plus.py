@@ -1341,18 +1341,21 @@ def _build_in_process(
 
 
 def _send_build_report(reports: Connection, error: Exception | None) -> None:
-    try:
-        reports.send(error)
-    except Exception:
-        # An exception that cannot be pickled is reported by its text.
-        reports.send(RuntimeError(f"{type(error).__name__}: {error}"))
+    """Send a build report: None for success, or an error as its text.
+
+    Exceptions are not sent themselves: some carry their input, as a JSON
+    parse error carries the whole data file.
+    """
+    reports.send(
+        None if error is None else RuntimeError(f"{type(error).__name__}: {error}")
+    )
 
 
 def _receive_build_report(
     reports: Connection, process: BaseProcess
 ) -> Exception | None:
-    """Return the build process's next report: None for success, or the
-    exception it reported."""
+    """Return the build process's next report: None for success, or an
+    exception with the error's text."""
     try:
         return reports.recv()
     except EOFError:

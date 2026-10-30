@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import sqlite3
 import threading
 import time
@@ -1070,7 +1071,9 @@ class TestBackgroundBuild:
         opened = []
         tailwind_plus.call_when_open(lambda: opened.append(True))
 
-        with pytest.raises(RuntimeError, match="could not be built: 'preview'"):
+        with pytest.raises(
+            RuntimeError, match="could not be built: KeyError: 'preview'"
+        ):
             tailwind_plus.search_component_names("email")
         assert "The TailwindPlus cache could not be built" in caplog.text
         assert opened == []
@@ -1082,8 +1085,26 @@ class TestBackgroundBuild:
         path = tmp_path / "old.json"
         path.write_text(json.dumps(sample_data))
 
-        with pytest.raises(ValueError, match="downloader version"):
+        with pytest.raises(RuntimeError, match="ValueError: .*downloader version"):
             TailwindPlus(str(path), cache_dir=str(tmp_path), build_in_background=True)
+
+    def test_build_errors_are_reported_as_text(self):
+        """A JSON parse error carries the whole document it parsed; the
+        report carries only the error's text."""
+
+        class Reports:
+            def send(self, report):
+                self.sent = report
+
+        reports = Reports()
+        document = "{" + "x" * 1_000_000
+        tailwind_plus._send_build_report(
+            reports, json.JSONDecodeError("Expecting value", document, 1)
+        )
+
+        assert isinstance(reports.sent, RuntimeError)
+        assert len(pickle.dumps(reports.sent)) < 1_000
+        assert str(reports.sent).startswith("JSONDecodeError: Expecting value")
 
     def test_open_cache_calls_back_at_once(self, tailwind_plus_instance):
         opened = []
