@@ -4,6 +4,7 @@ import math
 import os
 import re
 import sqlite3
+import tempfile
 import threading
 from array import array
 from collections import defaultdict
@@ -278,18 +279,22 @@ class TailwindPlus:
                 f"Found version {self.downloader_version}. Please regenerate the data file with a newer downloader version."
             )
 
-        # Create cache directory
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 
-        # Create/overwrite the SQLite DB
-        if os.path.exists(cache_path):
-            os.remove(cache_path)
-
+        # Build into a new file that replaces the cache only once complete, so
+        # an interrupted build never leaves a partial cache in its place. That
+        # also makes the journal and syncing to disk unnecessary while building.
+        build_fd, build_path = tempfile.mkstemp(
+            dir=os.path.dirname(cache_path), suffix=".building"
+        )
+        os.close(build_fd)
         # The building thread's connection writes the new file; the build's
         # methods reach it as self._db.
-        self._thread.db = sqlite3.connect(cache_path)
+        self._thread.db = sqlite3.connect(build_path)
         try:
             self._db.row_factory = sqlite3.Row
+            self._db.execute("PRAGMA journal_mode = OFF")
+            self._db.execute("PRAGMA synchronous = OFF")
             self._create_tables()
             # Data from downloaders before 4.0.0 has no descriptions.
             self._populate_db(
@@ -298,6 +303,11 @@ class TailwindPlus:
             self._store_metadata(data_file)
             self._db.commit()
             self._db.close()
+            os.replace(build_path, cache_path)
+        except BaseException:
+            self._db.close()
+            os.remove(build_path)
+            raise
         finally:
             # All further access is reads, through read-only connections.
             del self._thread.db

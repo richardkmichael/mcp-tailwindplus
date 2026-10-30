@@ -558,6 +558,18 @@ class TestCodeSearch:
 class TestSQLiteCache:
     """Test SQLite cache creation, reuse, and rebuild."""
 
+    def test_interrupted_build_leaves_no_cache(self, data_file, tmp_path, monkeypatch):
+        """A build that fails leaves neither a cache nor its partial file."""
+
+        def fail(*args):
+            raise RuntimeError("build interrupted")
+
+        monkeypatch.setattr(TailwindPlus, "_index_structure", fail)
+        with pytest.raises(RuntimeError, match="build interrupted"):
+            TailwindPlus(data_file, cache_dir=str(tmp_path / "cache"))
+
+        assert list((tmp_path / "cache").iterdir()) == []
+
     def test_cache_file_is_created(self, data_file, tmp_path):
         """Test that a cache DB file is created on first instantiation."""
         cache_dir = str(tmp_path / "cache")
