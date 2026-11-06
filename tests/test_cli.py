@@ -9,6 +9,7 @@ import time
 
 import pytest
 
+import mcp_tailwindplus
 from mcp_tailwindplus import FRAMEWORK_CHOICES, _project_setting
 from mcp_tailwindplus.tailwind_plus import Framework
 
@@ -109,6 +110,32 @@ def test_cache_dir_is_isolated(tmp_path):
 
     assert result.returncode == 0
     assert f"No cache files found in {tmp_path}" in result.stdout
+
+
+def test_clear_cache_keeps_files_in_use(tmp_path, monkeypatch, capsys):
+    """Clearing the cache removes the files it can and reports the others, as
+    on Windows a running server's open cache cannot be removed."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    in_use = cache_dir / "tailwindplus_components_cache_a.db"
+    free = cache_dir / "tailwindplus_components_cache_b.db"
+    for path in (in_use, free):
+        path.touch()
+    monkeypatch.setattr(mcp_tailwindplus, "user_cache_dir", lambda _: str(cache_dir))
+    remove = os.remove
+
+    def refuse_in_use(path):
+        if path == str(in_use):
+            raise PermissionError(13, "The file is in use", path)
+        remove(path)
+
+    monkeypatch.setattr(os, "remove", refuse_in_use)
+    mcp_tailwindplus._clear_cache()
+
+    assert [path.name for path in cache_dir.iterdir()] == [in_use.name]
+    output = capsys.readouterr().out
+    assert f"Not removed: {in_use}" in output
+    assert "Cleared 1 cache file(s)" in output
 
 
 class TestProjectSetting:

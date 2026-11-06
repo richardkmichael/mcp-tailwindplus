@@ -206,11 +206,23 @@ def _clear_cache():
         print(f"No cache files found in {cache_dir}")
         return
 
+    removed = 0
     for f in files:
-        os.remove(f)
+        try:
+            os.remove(f)
+        except OSError as error:
+            # On Windows, a file a running server has open.
+            print(f"Not removed: {f} ({error.strerror})")
+            continue
+        removed += 1
         print(f"Removed: {f}")
 
-    print(f"\nCleared {len(files)} cache file(s)")
+    print(f"\nCleared {removed} cache file(s)")
+    if removed < len(files):
+        print(
+            "Files a running server has open are not removed; stop the servers, "
+            "then clear the cache again."
+        )
 
 
 def __getattr__(name: str):
