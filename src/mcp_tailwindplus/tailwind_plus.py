@@ -265,7 +265,7 @@ class TailwindPlus:
         # Not a daemon: a server stopping mid-build waits for the cache.
         process = context.Process(
             target=_build_in_process,
-            args=(data_file, self._cache_path, report_sender, os.getpid()),
+            args=(data_file, self._cache_path, report_sender),
             name="TailwindPlus cache build",
         )
         process.start()
@@ -1333,7 +1333,6 @@ def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
             max_workers=min(_MAX_WORKERS, max(1, (os.process_cpu_count() or 2) - 1)),
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_exit_with_parent,
-            initargs=(os.getpid(),),
         )
     except OSError as error:
         _warn_parsing_in_process(error)
@@ -1345,16 +1344,14 @@ def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
         pool.shutdown(cancel_futures=True)
 
 
-def _build_in_process(
-    data_file: str, cache_path: str, reports: Connection, parent_pid: int
-) -> None:
+def _build_in_process(data_file: str, cache_path: str, reports: Connection) -> None:
     """Build a cache, run in the process the server starts for it.
 
     It reports to the server twice: once the data file is read and checked,
     or found built by another server, and once the cache is built. Each
     report is None for success, or the exception.
     """
-    _exit_with_parent(parent_pid)
+    _exit_with_parent()
     builder = TailwindPlus._builder(cache_path)
     data_read = False
 
@@ -1399,19 +1396,20 @@ def _receive_build_report(
         )
 
 
-def _exit_with_parent(parent_pid: int) -> None:
-    """Start a thread that ends this process once its parent is gone.
+def _exit_with_parent() -> None:
+    """Start a thread that ends this process, spawned by multiprocessing, once
+    its parent is gone.
 
     A server killed outright, as by SIGKILL, cannot stop its cache build or
     the build's workers, and they would otherwise run, or wait for work,
-    indefinitely. An orphaned process is given a new parent, so its parent
-    process id changes; on Windows it does not, and the processes outlive a
-    killed server.
+    indefinitely. The parent's sentinel becomes ready when the parent exits:
+    on Windows it is a handle to the parent process, and on POSIX a pipe the
+    parent holds open.
     """
+    parent = multiprocessing.parent_process()
 
     def watch() -> None:
-        while os.getppid() == parent_pid:
-            time.sleep(1)
+        multiprocessing.connection.wait([parent.sentinel])
         os._exit(1)
 
     threading.Thread(target=watch, daemon=True).start()

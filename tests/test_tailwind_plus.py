@@ -1,5 +1,6 @@
 import errno
 import json
+import multiprocessing
 import os
 import pickle
 import sqlite3
@@ -9,6 +10,7 @@ import time
 from array import array
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+from multiprocessing.connection import Connection
 
 import pytest
 
@@ -1106,8 +1108,44 @@ class TestSQLiteCache:
         assert TailwindPlus._cache_is_stale("/nonexistent/path.db", data_file)
 
 
+def _start_watching_child(alive: Connection) -> None:
+    """Stand in for a server: start a child that exits with this process,
+    then wait to be killed."""
+    child = multiprocessing.get_context("spawn").Process(
+        target=_watch_parent, args=(alive,)
+    )
+    child.start()
+    alive.close()
+    time.sleep(60)
+
+
+def _watch_parent(alive: Connection) -> None:
+    """Stand in for a cache build: exit with the parent, holding a connection
+    whose other end reads the end of input once this process is gone."""
+    tailwind_plus._exit_with_parent()
+    alive.send("watching")
+    time.sleep(60)
+
+
 class TestBackgroundBuild:
     """Test building the cache in a separate process."""
+
+    def test_build_process_exits_with_a_killed_server(self):
+        """A process started for the build exits once the server that started
+        it is killed outright, as its cache build would otherwise run on."""
+        context = multiprocessing.get_context("spawn")
+        alive, alive_sender = context.Pipe(duplex=False)
+        server = context.Process(target=_start_watching_child, args=(alive_sender,))
+        server.start()
+        alive_sender.close()
+        assert alive.recv() == "watching"
+
+        server.kill()
+        server.join()
+
+        assert alive.poll(10)
+        with pytest.raises(EOFError):
+            alive.recv()
 
     @pytest.fixture
     def held_build(self, monkeypatch):
