@@ -386,9 +386,14 @@ class TailwindPlus:
 
     @staticmethod
     def _get_cache_path(file_path: str, cache_dir: str | None = None) -> str:
-        """Compute the SQLite cache path for a given data file."""
-        abs_path = os.path.abspath(file_path)
-        path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:16]
+        """Compute the SQLite cache path for a given data file.
+
+        The path is resolved and, on Windows, lowercased before it is hashed,
+        so that each spelling of the data file's path, through a symbolic
+        link, a short name or other letter case, names the same cache.
+        """
+        canonical_path = os.path.normcase(os.path.realpath(file_path))
+        path_hash = hashlib.sha256(canonical_path.encode()).hexdigest()[:16]
         if cache_dir is None:
             cache_dir = user_cache_dir("mcp-tailwindplus")
         return os.path.join(cache_dir, f"{_CACHE_FILE_PREFIX}{path_hash}.db")
@@ -396,14 +401,17 @@ class TailwindPlus:
     @classmethod
     def _remove_stale_caches(cls, cache_path: str) -> None:
         """Remove the other caches beside a cache that are stale: built by an
-        older version, or for a data file that has changed or is gone.
+        older version, for a data file that has changed or is gone, or named
+        for another spelling of its data file's path, as an older version
+        named caches.
 
         Each data file has its own cache, so a newly downloaded data file
         would otherwise leave the previous file's cache behind. Caches of
         unchanged data files are kept, since other servers may use them, and
         so are caches another server is building. A removed cache's partial
-        build files go with it, and so does its lock file when its data file
-        is gone, since no server can then build that cache.
+        build files go with it, and so does its lock file when no server can
+        build that cache again: its data file is gone, or the cache is not
+        named for it.
         """
         pattern = os.path.join(
             glob.escape(os.path.dirname(cache_path)), f"{_CACHE_FILE_PREFIX}*.db"
@@ -419,7 +427,12 @@ class TailwindPlus:
                 # Checked with the lock held, so a cache another server has
                 # just rebuilt is not removed.
                 data_file = cls._cache_data_file(other_cache_path)
-                if data_file is not None and not cls._cache_is_stale(
+                named_for_data_file = (
+                    data_file is not None
+                    and cls._get_cache_path(data_file, os.path.dirname(cache_path))
+                    == other_cache_path
+                )
+                if named_for_data_file and not cls._cache_is_stale(
                     other_cache_path, data_file
                 ):
                     continue
@@ -432,9 +445,9 @@ class TailwindPlus:
                     except OSError:
                         pass
             # Windows removes no open file, so the lock file is removed once it
-            # is closed; no server builds the cache of a gone data file, so none
-            # takes the lock meanwhile.
-            if data_file is None or not os.path.exists(data_file):
+            # is closed; no server builds such a cache, so none takes the lock
+            # meanwhile.
+            if not named_for_data_file or not os.path.exists(data_file):
                 try:
                     os.remove(f"{other_cache_path}.lock")
                 except OSError:
