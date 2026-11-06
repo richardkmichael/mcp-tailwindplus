@@ -905,11 +905,52 @@ class TestSQLiteCache:
             raise PermissionError(13, "Access is denied", destination)
 
         monkeypatch.setattr(os, "replace", refuse)
+        monkeypatch.setattr(tailwind_plus, "_FILE_IN_USE_RETRY_SECONDS", 0)
         with pytest.raises(RuntimeError, match="another running server") as error:
             TailwindPlus(data_file, cache_dir=str(tmp_path / "cache"))
 
         assert isinstance(error.value.__cause__, PermissionError)
         assert [path.suffix for path in (tmp_path / "cache").iterdir()] == [".lock"]
+
+    def test_cache_in_use_for_a_moment_is_replaced(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """A cache another program holds open for a moment, as antivirus does
+        on Windows, is replaced once it is released."""
+        replace = os.replace
+        refusals = []
+
+        def refuse_twice(source, destination):
+            if len(refusals) < 2:
+                refusals.append(destination)
+                raise PermissionError(13, "Access is denied", destination)
+            replace(source, destination)
+
+        monkeypatch.setattr(os, "replace", refuse_twice)
+        with TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")) as tp:
+            assert tp.list_component_names()
+
+        assert len(refusals) == 2
+
+    def test_failed_build_keeps_its_error_when_its_file_is_in_use(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """A failed build whose file cannot be removed raises the build's
+        error, not the removal's."""
+        remove = os.remove
+
+        def refuse_build_files(path):
+            if path.endswith(".building"):
+                raise PermissionError(13, "The file is in use", path)
+            remove(path)
+
+        def fail(*args):
+            raise RuntimeError("build interrupted")
+
+        monkeypatch.setattr(os, "remove", refuse_build_files)
+        monkeypatch.setattr(TailwindPlus, "_index_structure", fail)
+        with pytest.raises(RuntimeError, match="build interrupted"):
+            TailwindPlus(data_file, cache_dir=str(tmp_path / "cache"))
 
     def test_build_syncs_through_a_writable_handle(
         self, data_file, tmp_path, monkeypatch
