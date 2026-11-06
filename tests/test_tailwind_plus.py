@@ -706,6 +706,31 @@ class TestSQLiteCache:
             other_spelling, cache_dir
         ) == TailwindPlus._get_cache_path(data_file, cache_dir)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Symbolic links need privileges on Windows"
+    )
+    def test_cache_of_a_linked_data_file_is_kept_when_the_link_changes(
+        self, sample_data, tmp_path
+    ):
+        """A link to a data file pointed at a new data file builds that file's
+        cache, and the cache of the data file it pointed at before, which is
+        unchanged and may serve other servers, is kept."""
+        cache_dir = str(tmp_path / "cache")
+        old, new = tmp_path / "old.json", tmp_path / "new.json"
+        old.write_text(json.dumps(sample_data))
+        new.write_text(json.dumps(sample_data) + " ")
+        link = tmp_path / "current.json"
+        link.symlink_to(old)
+        TailwindPlus(str(link), cache_dir=cache_dir).close()
+        old_cache = TailwindPlus._get_cache_path(str(old), cache_dir)
+
+        link.unlink()
+        link.symlink_to(new)
+        TailwindPlus(str(link), cache_dir=cache_dir).close()
+
+        assert os.path.exists(old_cache)
+        assert os.path.exists(f"{old_cache}.lock")
+
     def test_build_removes_caches_named_for_another_spelling(
         self, sample_data, tmp_path
     ):

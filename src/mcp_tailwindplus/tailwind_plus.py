@@ -859,7 +859,9 @@ class TailwindPlus:
         for staleness checks."""
         metadata = {
             "cache_format": CACHE_FORMAT,
-            "source_file": os.path.abspath(data_file),
+            # Resolved, as for the cache's name, so the stale-cache sweep finds
+            # the cache named for its data file after a link to it changes.
+            "source_file": os.path.realpath(data_file),
             "source_mtime": str(data_stat.st_mtime),
             "source_size": str(data_stat.st_size),
             "version": raw_data["version"],
