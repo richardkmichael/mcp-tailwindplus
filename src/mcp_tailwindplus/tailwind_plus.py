@@ -379,7 +379,13 @@ class TailwindPlus:
         _reading); opening read-only makes the read-only assumption explicit
         and enforced.
         """
-        uri = f"{Path(cache_path).absolute().as_uri()}?mode=ro"
+        uri = Path(cache_path).absolute().as_uri()
+        if not uri.startswith("file:///"):
+            # A Windows UNC path, as file://server/share/...; SQLite rejects a
+            # URI naming a host, and reads a path beginning with two slashes
+            # as a UNC path.
+            uri = f"file:////{uri.removeprefix('file://')}"
+        uri = f"{uri}?mode=ro"
         db = sqlite3.connect(uri, uri=True, check_same_thread=False)
         db.row_factory = sqlite3.Row
         return db

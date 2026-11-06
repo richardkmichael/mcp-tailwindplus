@@ -1071,6 +1071,20 @@ class TestSQLiteCache:
                 assert found.result()
                 assert component.result()
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows UNC paths")
+    def test_cache_on_a_unc_path(self, data_file, tmp_path):
+        """A cache directory on a UNC path, as a redirected profile has, is
+        built and read; it is reached here through the drive's admin share."""
+        drive, rest = os.path.splitdrive(str(tmp_path))
+        unc_tmp_path = rf"\\localhost\{drive.rstrip(':')}${rest}"
+        if not os.path.isdir(unc_tmp_path):
+            pytest.skip("The drive's admin share is not available")
+
+        with TailwindPlus(
+            data_file, cache_dir=os.path.join(unc_tmp_path, "cache")
+        ) as tp:
+            assert tp.list_component_names()
+
     def test_connection_is_read_only(self, tailwind_plus_instance):
         """The cache connection rejects writes but still serves reads."""
         with (
