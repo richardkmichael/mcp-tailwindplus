@@ -690,7 +690,6 @@ class TestSQLiteCache:
     def test_cache_being_built_is_not_removed(self, sample_data, tmp_path):
         """A stale cache whose lock another server holds, while rebuilding it,
         is kept."""
-        fcntl = pytest.importorskip("fcntl")
         cache_dir = str(tmp_path / "cache")
         changed = tmp_path / "changed.json"
         changed.write_text(json.dumps(sample_data))
@@ -700,8 +699,7 @@ class TestSQLiteCache:
         current = tmp_path / "current.json"
         current.write_text(json.dumps(sample_data))
 
-        with open(f"{changed_cache}.lock", "a") as lock_file:
-            fcntl.flock(lock_file, fcntl.LOCK_EX)
+        with tailwind_plus._build_lock(changed_cache):
             TailwindPlus(str(current), cache_dir=cache_dir).close()
 
         assert os.path.exists(changed_cache)
