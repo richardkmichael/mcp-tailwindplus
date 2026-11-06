@@ -82,6 +82,11 @@ _MAX_WORKERS = 61
 # On Windows, a server waiting for another's build lock retries it this often.
 _LOCK_RETRY_SECONDS = 0.1
 
+# On Windows, a file operation that fails for a file in use is retried this
+# often, for this long; other programs hold files open for a moment.
+_FILE_IN_USE_RETRY_INTERVAL_SECONDS = 0.05
+_FILE_IN_USE_RETRY_SECONDS = 2.0
+
 # Marks the matched terms of a description in search queries.
 _MATCH_START, _MATCH_END = "\x02", "\x03"
 
@@ -584,10 +589,10 @@ class TailwindPlus:
             # disk after the rename does; a crash in between would leave a cache
             # with its metadata but not all its pages. Windows syncs a file
             # only through a handle open for writing.
-            with open(build_path, "r+b") as build_file:
+            with _retry_while_in_use(lambda: open(build_path, "r+b")) as build_file:
                 _sync_to_disk(build_file)
             try:
-                os.replace(build_path, cache_path)
+                _retry_while_in_use(lambda: os.replace(build_path, cache_path))
             except PermissionError as error:
                 # On Windows, a cache another running server has open.
                 raise RuntimeError(
@@ -597,7 +602,12 @@ class TailwindPlus:
                 ) from error
         except BaseException:
             self._build_db.close()
-            os.remove(build_path)
+            # A build file still in use is removed by the next build, so its
+            # error does not replace the build's.
+            try:
+                os.remove(build_path)
+            except OSError:
+                pass
             raise
         finally:
             # All further access is reads, through read-only connections.
@@ -1257,6 +1267,23 @@ class TailwindPlus:
         )
 
         return snippet["preview"]
+
+
+def _retry_while_in_use[Result](operation: Callable[[], Result]) -> Result:
+    """Run a file operation, retrying it while it fails for a file in use.
+
+    On Windows, a file another process has open cannot be replaced or
+    removed, and may not be opened, and antivirus, the search indexer or
+    another server checking the cache holds files open for a moment.
+    """
+    deadline = time.monotonic() + _FILE_IN_USE_RETRY_SECONDS
+    while True:
+        try:
+            return operation()
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_FILE_IN_USE_RETRY_INTERVAL_SECONDS)
 
 
 def _sync_to_disk(file: BinaryIO) -> None:
