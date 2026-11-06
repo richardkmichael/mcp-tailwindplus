@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import sqlite3
+import sys
 import threading
 import time
 from array import array
@@ -822,6 +823,23 @@ class TestSQLiteCache:
 
         assert [path.suffix for path in (tmp_path / "cache").iterdir()] == [".lock"]
 
+    def test_cache_that_cannot_be_replaced_names_the_cause(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """A build whose cache cannot be replaced, as on Windows while another
+        server has it open, fails naming the cause and leaves no partial
+        file."""
+
+        def refuse(source, destination):
+            raise PermissionError(13, "Access is denied", destination)
+
+        monkeypatch.setattr(os, "replace", refuse)
+        with pytest.raises(RuntimeError, match="another running server") as error:
+            TailwindPlus(data_file, cache_dir=str(tmp_path / "cache"))
+
+        assert isinstance(error.value.__cause__, PermissionError)
+        assert [path.suffix for path in (tmp_path / "cache").iterdir()] == [".lock"]
+
     def test_build_syncs_through_a_writable_handle(
         self, data_file, tmp_path, monkeypatch
     ):
@@ -916,12 +934,24 @@ class TestSQLiteCache:
 
             assert len(opened) == connections_when_open
 
-    @pytest.mark.parametrize("change", ["removed", "replaced"])
+    @pytest.mark.parametrize(
+        "change",
+        [
+            pytest.param(
+                "removed",
+                marks=pytest.mark.skipif(
+                    sys.platform == "win32", reason="Windows removes no open file"
+                ),
+            ),
+            "replaced",
+        ],
+    )
     def test_open_cache_survives_its_file_changing(
         self, data_file, sample_data, tmp_path, change
     ):
         """Another server may remove the cache, or rebuild it for a changed
-        data file; an open instance keeps reading the cache it opened."""
+        data file; an open instance keeps reading the cache it opened. Windows
+        replaces no open file, so there the rebuild fails, naming the cause."""
         cache_dir = str(tmp_path / "cache")
         with TailwindPlus(data_file, cache_dir=cache_dir) as tailwind_plus:
             cache_path = TailwindPlus._get_cache_path(data_file, cache_dir)
@@ -931,7 +961,11 @@ class TestSQLiteCache:
                 del sample_data["tailwindplus"]["Ecommerce"]
                 with open(data_file, "w") as file:
                     json.dump(sample_data, file)
-                TailwindPlus(data_file, cache_dir=cache_dir).close()
+                if sys.platform == "win32":
+                    with pytest.raises(RuntimeError, match="another running server"):
+                        TailwindPlus(data_file, cache_dir=cache_dir)
+                else:
+                    TailwindPlus(data_file, cache_dir=cache_dir).close()
 
             # A new thread, as FastMCP's worker threads come and go.
             with ThreadPoolExecutor(max_workers=1) as pool:
