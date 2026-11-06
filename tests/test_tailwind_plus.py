@@ -3,6 +3,7 @@ import json
 import multiprocessing
 import os
 import pickle
+import shutil
 import sqlite3
 import sys
 import threading
@@ -689,6 +690,46 @@ class TestSQLiteCache:
         assert os.path.exists(f"{cache_path('changed')}.lock")
         assert os.path.exists(cache_path("unchanged"))
         assert os.path.exists(cache_path("current"))
+
+    def test_spellings_of_a_data_file_path_share_a_cache(self, data_file, tmp_path):
+        """Another spelling of the data file's path, through a symbolic link
+        or, on Windows, in other letter case, names the same cache."""
+        if sys.platform == "win32":
+            other_spelling = data_file.upper()
+        else:
+            link = tmp_path / "link.json"
+            link.symlink_to(data_file)
+            other_spelling = str(link)
+        cache_dir = str(tmp_path / "cache")
+
+        assert TailwindPlus._get_cache_path(
+            other_spelling, cache_dir
+        ) == TailwindPlus._get_cache_path(data_file, cache_dir)
+
+    def test_build_removes_caches_named_for_another_spelling(
+        self, sample_data, tmp_path
+    ):
+        """A cache named for another spelling of its data file's path, as an
+        older version named caches, is removed with its lock file, and the
+        cache named for the data file is kept."""
+        cache_dir = tmp_path / "cache"
+        data_files = {}
+        for name in ("data", "current"):
+            data_files[name] = tmp_path / f"{name}.json"
+            data_files[name].write_text(json.dumps(sample_data))
+        TailwindPlus(str(data_files["data"]), cache_dir=str(cache_dir)).close()
+        cache_path = TailwindPlus._get_cache_path(
+            str(data_files["data"]), str(cache_dir)
+        )
+        misnamed = cache_dir / "tailwindplus_components_cache_0123456789abcdef.db"
+        shutil.copyfile(cache_path, misnamed)
+        open(f"{misnamed}.lock", "w").close()
+
+        TailwindPlus(str(data_files["current"]), cache_dir=str(cache_dir)).close()
+
+        assert not misnamed.exists()
+        assert not os.path.exists(f"{misnamed}.lock")
+        assert os.path.exists(cache_path)
 
     def test_stale_cache_that_cannot_be_removed_is_not_reported_removed(
         self, sample_data, tmp_path, monkeypatch, caplog
