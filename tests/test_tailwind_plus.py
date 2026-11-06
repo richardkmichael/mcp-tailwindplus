@@ -876,21 +876,41 @@ class TestSQLiteCache:
         """The build syncs its file to disk before it replaces the cache.
         Windows syncs a file only through a handle open for writing. POSIX
         syncs through any handle, so there the Windows rule is applied."""
-        fsync = os.fsync
+        sync_to_disk = tailwind_plus._sync_to_disk
         synced = []
 
-        def recorded_fsync(fd):
+        def recorded_sync_to_disk(file):
+            fd = file.fileno()
             if fcntl is not None:
                 if fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY:
                     raise OSError(errno.EBADF, os.strerror(errno.EBADF))
-            fsync(fd)
+            sync_to_disk(file)
             synced.append(fd)
 
-        monkeypatch.setattr(os, "fsync", recorded_fsync)
+        monkeypatch.setattr(tailwind_plus, "_sync_to_disk", recorded_sync_to_disk)
 
         TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")).close()
 
         assert synced
+
+    @pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
+    def test_build_flushes_the_drive_cache_on_macos(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """On macOS, the build flushes its file through the drive's cache,
+        which fsync leaves the data in."""
+        real_fcntl = fcntl.fcntl
+        commands = []
+
+        def recorded_fcntl(fd, command, *args):
+            commands.append(command)
+            return real_fcntl(fd, command, *args)
+
+        monkeypatch.setattr(fcntl, "fcntl", recorded_fcntl)
+
+        TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")).close()
+
+        assert fcntl.F_FULLFSYNC in commands
 
     def test_cache_file_is_created(self, data_file, tmp_path):
         """Test that a cache DB file is created on first instantiation."""
