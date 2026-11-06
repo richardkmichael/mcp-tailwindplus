@@ -73,6 +73,10 @@ _SNIPPET_ID_TYPECODE = "I"
 # worker processes to parse it.
 _PARALLEL_PARSING_MIN_SNIPPETS = 1000
 
+# On Windows, a process pool takes at most 61 workers; the limit is applied on
+# every platform.
+_MAX_WORKERS = 61
+
 # Marks the matched terms of a description in search queries.
 _MATCH_START, _MATCH_END = "\x02", "\x03"
 
@@ -1297,7 +1301,7 @@ def _worker_pool(snippet_count: int) -> Iterator[ProcessPoolExecutor | None]:
         return
     try:
         pool = ProcessPoolExecutor(
-            max_workers=max(1, (os.process_cpu_count() or 2) - 1),
+            max_workers=min(_MAX_WORKERS, max(1, (os.process_cpu_count() or 2) - 1)),
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_exit_with_parent,
             initargs=(os.getpid(),),

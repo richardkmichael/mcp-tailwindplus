@@ -6,7 +6,7 @@ import sqlite3
 import threading
 import time
 from array import array
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
 import pytest
@@ -793,6 +793,23 @@ class TestSQLiteCache:
             assert tp.search_component_names("you@example")
 
         assert "Parsing component code in this process" in caplog.text
+
+    def test_workers_are_limited_on_many_cpus(self, monkeypatch):
+        """A machine with more CPUs than a Windows process pool takes workers
+        for gets a pool of the most workers it takes."""
+        sizes = []
+
+        class RecordedPool(ProcessPoolExecutor):
+            def __init__(self, max_workers, **kwargs):
+                sizes.append(max_workers)
+                super().__init__(max_workers, **kwargs)
+
+        monkeypatch.setattr(tailwind_plus, "ProcessPoolExecutor", RecordedPool)
+        monkeypatch.setattr(os, "process_cpu_count", lambda: 128)
+        with tailwind_plus._worker_pool(tailwind_plus._PARALLEL_PARSING_MIN_SNIPPETS):
+            pass
+
+        assert sizes == [61]
 
     def test_interrupted_build_leaves_no_cache(self, data_file, tmp_path, monkeypatch):
         """A build that fails leaves neither a cache nor its partial file, only
