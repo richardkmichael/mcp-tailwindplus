@@ -22,7 +22,7 @@ from enum import Enum
 from multiprocessing.connection import Connection
 from multiprocessing.process import BaseProcess
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, BinaryIO
 
 import orjson
 
@@ -566,7 +566,7 @@ class TailwindPlus:
             # with its metadata but not all its pages. Windows syncs a file
             # only through a handle open for writing.
             with open(build_path, "r+b") as build_file:
-                os.fsync(build_file.fileno())
+                _sync_to_disk(build_file)
             try:
                 os.replace(build_path, cache_path)
             except PermissionError as error:
@@ -1238,6 +1238,18 @@ class TailwindPlus:
         )
 
         return snippet["preview"]
+
+
+def _sync_to_disk(file: BinaryIO) -> None:
+    """Write a file's data through to the disk.
+
+    On macOS, fsync leaves the data in the drive's cache, which may write it
+    after later writes, such as a rename; F_FULLFSYNC flushes that cache too.
+    """
+    if hasattr(fcntl, "F_FULLFSYNC"):
+        fcntl.fcntl(file.fileno(), fcntl.F_FULLFSYNC)
+    else:
+        os.fsync(file.fileno())
 
 
 @contextmanager
