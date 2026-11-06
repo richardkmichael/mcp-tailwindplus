@@ -347,7 +347,8 @@ class TailwindPlus:
         borrows a connection of its own, waiting if all are lent. The
         connections are opened once, so their number stays fixed however many
         threads call, and they keep reading the cache file they opened even if
-        another server replaces or removes it.
+        another server replaces or removes it. Windows replaces or removes no
+        file that is open, so there the other server's rebuild fails instead.
         """
         db = self._idle_read_connections.get()
         try:
@@ -559,7 +560,15 @@ class TailwindPlus:
             # only through a handle open for writing.
             with open(build_path, "r+b") as build_file:
                 os.fsync(build_file.fileno())
-            os.replace(build_path, cache_path)
+            try:
+                os.replace(build_path, cache_path)
+            except PermissionError as error:
+                # On Windows, a cache another running server has open.
+                raise RuntimeError(
+                    f"The cache {cache_path} could not be replaced; another "
+                    "running server may have it open. Stop the other servers, "
+                    "then start this one again."
+                ) from error
         except BaseException:
             self._build_db.close()
             os.remove(build_path)
