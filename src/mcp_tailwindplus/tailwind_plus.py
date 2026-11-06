@@ -29,6 +29,8 @@ import orjson
 try:
     import fcntl
 except ImportError:  # Windows
+    import msvcrt
+
     fcntl = None
 from packaging.version import Version
 from platformdirs import user_cache_dir
@@ -76,6 +78,9 @@ _PARALLEL_PARSING_MIN_SNIPPETS = 1000
 # On Windows, a process pool takes at most 61 workers; the limit is applied on
 # every platform.
 _MAX_WORKERS = 61
+
+# On Windows, a server waiting for another's build lock retries it this often.
+_LOCK_RETRY_SECONDS = 0.1
 
 # Marks the matched terms of a description in search queries.
 _MATCH_START, _MATCH_END = "\x02", "\x03"
@@ -407,7 +412,7 @@ class TailwindPlus:
         for other_cache_path in glob.glob(pattern):
             if other_cache_path == cache_path:
                 continue
-            with _build_lock_unless_held(other_cache_path) as locked:
+            with _build_lock(other_cache_path, wait=False) as locked:
                 if not locked:
                     continue
                 # Checked with the lock held, so a cache another server has
@@ -425,11 +430,14 @@ class TailwindPlus:
                         os.remove(path)
                     except OSError:
                         pass
-                if data_file is None or not os.path.exists(data_file):
-                    try:
-                        os.remove(f"{other_cache_path}.lock")
-                    except OSError:
-                        pass
+            # Windows removes no open file, so the lock file is removed once it
+            # is closed; no server builds the cache of a gone data file, so none
+            # takes the lock meanwhile.
+            if data_file is None or not os.path.exists(data_file):
+                try:
+                    os.remove(f"{other_cache_path}.lock")
+                except OSError:
+                    pass
             logger.info("Removed stale cache %s", other_cache_path)
 
     @staticmethod
@@ -1217,40 +1225,45 @@ class TailwindPlus:
 
 
 @contextmanager
-def _build_lock(cache_path: str) -> Iterator[None]:
+def _build_lock(cache_path: str, wait: bool = True) -> Iterator[bool]:
     """Hold an exclusive lock on the cache's lock file, creating the cache
     directory if needed, so servers starting at once build the cache one at a
-    time.
+    time, yielding whether the lock was taken.
 
-    Without fcntl, on Windows, no lock is taken, and servers starting at once
-    each build the cache; the last build to finish replaces the others.
+    Without waiting, the lock is not taken when another server holds it,
+    which means that server is building the cache.
     """
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    if fcntl is None:
-        yield
-        return
     with open(f"{cache_path}.lock", "a") as lock_file:
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
-        yield
-
-
-@contextmanager
-def _build_lock_unless_held(cache_path: str) -> Iterator[bool]:
-    """Take a cache's build lock without waiting, yielding whether it was
-    taken: another server holding it is building that cache.
-
-    Without fcntl, on Windows, no lock is taken and True is yielded.
-    """
-    if fcntl is None:
-        yield True
-        return
-    with open(f"{cache_path}.lock", "a") as lock_file:
-        try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield False
+        if fcntl is not None:
+            try:
+                fcntl.flock(
+                    lock_file, fcntl.LOCK_EX if wait else fcntl.LOCK_EX | fcntl.LOCK_NB
+                )
+            except BlockingIOError:
+                yield False
+                return
+            yield True
             return
-        yield True
+
+        # On Windows, the lock is on the file's first byte. A waiting lock in
+        # msvcrt gives up after about ten seconds, so it is retried here.
+        lock_file.seek(0)
+        while True:
+            try:
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except PermissionError:
+                if not wait:
+                    yield False
+                    return
+                time.sleep(_LOCK_RETRY_SECONDS)
+        try:
+            yield True
+        finally:
+            # Windows may release the lock of a closed file only later.
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def _components(tailwindplus_data: dict) -> Iterator[tuple[str, list[dict]]]:
