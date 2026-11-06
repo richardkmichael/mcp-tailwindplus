@@ -57,7 +57,7 @@ localhost URLs. Use [ngrok](https://ngrok.com/) to expose the server:
 
 ```bash
 # Terminal 1: start the MCP server over HTTP, accepting requests the tunnel forwards
-mcp-tailwindplus --transport http --allowed-host '*.ngrok-free.app'
+mcp-tailwindplus --transport http --allowed-host "*.ngrok-free.app"
 
 # Terminal 2: tunnel via ngrok (terminates TLS at its edge)
 ngrok http 8000
