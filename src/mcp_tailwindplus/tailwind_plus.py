@@ -1264,11 +1264,16 @@ def _sync_to_disk(file: BinaryIO) -> None:
 
     On macOS, fsync leaves the data in the drive's cache, which may write it
     after later writes, such as a rename; F_FULLFSYNC flushes that cache too.
+    Only some filesystems support F_FULLFSYNC, such as APFS but not network
+    filesystems, and on the others the file is synced with fsync.
     """
     if hasattr(fcntl, "F_FULLFSYNC"):
-        fcntl.fcntl(file.fileno(), fcntl.F_FULLFSYNC)
-    else:
-        os.fsync(file.fileno())
+        try:
+            fcntl.fcntl(file.fileno(), fcntl.F_FULLFSYNC)
+            return
+        except OSError:
+            pass
+    os.fsync(file.fileno())
 
 
 @contextmanager

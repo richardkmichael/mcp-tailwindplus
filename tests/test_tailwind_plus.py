@@ -953,6 +953,32 @@ class TestSQLiteCache:
 
         assert fcntl.F_FULLFSYNC in commands
 
+    @pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
+    def test_build_syncs_where_the_drive_cache_cannot_be_flushed(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """On a macOS filesystem without F_FULLFSYNC, such as a network one,
+        the build syncs its file with fsync instead."""
+        real_fcntl = fcntl.fcntl
+        fsync = os.fsync
+        synced = []
+
+        def unsupported_full_fsync(fd, command, *args):
+            if command == fcntl.F_FULLFSYNC:
+                raise OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP))
+            return real_fcntl(fd, command, *args)
+
+        def recorded_fsync(fd):
+            fsync(fd)
+            synced.append(fd)
+
+        monkeypatch.setattr(fcntl, "fcntl", unsupported_full_fsync)
+        monkeypatch.setattr(os, "fsync", recorded_fsync)
+
+        TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")).close()
+
+        assert synced
+
     def test_cache_file_is_created(self, data_file, tmp_path):
         """Test that a cache DB file is created on first instantiation."""
         cache_dir = str(tmp_path / "cache")
