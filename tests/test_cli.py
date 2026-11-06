@@ -16,9 +16,12 @@ from mcp_tailwindplus.tailwind_plus import Framework
 @pytest.fixture(autouse=True)
 def isolated_cache_dir(tmp_path, monkeypatch):
     """Keep the CLI's cache, which is in the user's cache directory, out of the
-    real one, on macOS through HOME and on Linux through XDG_CACHE_HOME."""
+    real one, on macOS through HOME, on Linux through XDG_CACHE_HOME, and on
+    Windows through platformdirs' override of the local application data
+    folder."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("WIN_PD_OVERRIDE_LOCAL_APPDATA", str(tmp_path / "appdata"))
 
 
 def _run_cli(*args, env=None):
@@ -98,6 +101,14 @@ def test_invalid_project_setting_environment_is_rejected(
     assert result.returncode == 2
     assert f"{env_name} must be one of" in result.stderr
     assert "Error starting server" not in result.stderr
+
+
+def test_cache_dir_is_isolated(tmp_path):
+    """The CLI's cache directory is the test's own, on every platform."""
+    result = _run_cli("--clear-cache")
+
+    assert result.returncode == 0
+    assert f"No cache files found in {tmp_path}" in result.stdout
 
 
 class TestProjectSetting:
