@@ -400,8 +400,10 @@ class TailwindPlus:
         """Compute the SQLite cache path for a given data file.
 
         The path is resolved and, on Windows, lowercased before it is hashed,
-        so that each spelling of the data file's path, through a symbolic
-        link, a short name or other letter case, names the same cache.
+        so that each spelling of the data file's path names the same cache:
+        through a symbolic link and, on Windows, with a short name or in other
+        letter case. On macOS, whose filesystems usually ignore letter case
+        too, spellings differing only in letter case name separate caches.
         """
         canonical_path = os.path.normcase(os.path.realpath(file_path))
         path_hash = hashlib.sha256(canonical_path.encode()).hexdigest()[:16]

@@ -218,7 +218,7 @@ def _clear_cache():
         print(f"Removed: {f}")
 
     print(f"\nCleared {removed} cache file(s)")
-    if removed < len(files):
+    if removed < len(files) and sys.platform == "win32":
         print(
             "Files a running server has open are not removed; stop the servers, "
             "then clear the cache again."
