@@ -439,7 +439,14 @@ class TailwindPlus:
                     os.remove(f"{other_cache_path}.lock")
                 except OSError:
                     pass
-            logger.info("Removed stale cache %s", other_cache_path)
+            if os.path.exists(other_cache_path):
+                # On Windows, a cache another running server has open.
+                logger.info(
+                    "Stale cache %s could not be removed; a later build removes it",
+                    other_cache_path,
+                )
+            else:
+                logger.info("Removed stale cache %s", other_cache_path)
 
     @staticmethod
     def _cache_data_file(cache_path: str) -> str | None:

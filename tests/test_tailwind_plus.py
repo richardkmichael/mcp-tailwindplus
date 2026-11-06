@@ -688,6 +688,34 @@ class TestSQLiteCache:
         assert os.path.exists(cache_path("unchanged"))
         assert os.path.exists(cache_path("current"))
 
+    def test_stale_cache_that_cannot_be_removed_is_not_reported_removed(
+        self, sample_data, tmp_path, monkeypatch, caplog
+    ):
+        """A stale cache that cannot be removed, as on Windows while another
+        server has it open, is logged as kept, not as removed."""
+        cache_dir = str(tmp_path / "cache")
+        changed = tmp_path / "changed.json"
+        changed.write_text(json.dumps(sample_data))
+        TailwindPlus(str(changed), cache_dir=cache_dir).close()
+        changed.write_text(json.dumps(sample_data) + " ")
+        changed_cache = TailwindPlus._get_cache_path(str(changed), cache_dir)
+        current = tmp_path / "current.json"
+        current.write_text(json.dumps(sample_data))
+        remove = os.remove
+
+        def refuse_changed_cache(path):
+            if path == changed_cache:
+                raise PermissionError(13, "The file is in use", path)
+            remove(path)
+
+        monkeypatch.setattr(os, "remove", refuse_changed_cache)
+        with caplog.at_level("INFO"):
+            TailwindPlus(str(current), cache_dir=cache_dir).close()
+
+        assert os.path.exists(changed_cache)
+        assert f"Stale cache {changed_cache} could not be removed" in caplog.text
+        assert f"Removed stale cache {changed_cache}" not in caplog.text
+
     def test_cache_being_built_is_not_removed(self, sample_data, tmp_path):
         """A stale cache whose lock another server holds, while rebuilding it,
         is kept."""
