@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 import pickle
@@ -25,6 +26,11 @@ from mcp_tailwindplus.tailwind_plus import (
     TailwindVersion,
     _capped_prose,
 )
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 
 @pytest.fixture
@@ -800,6 +806,28 @@ class TestSQLiteCache:
             TailwindPlus(data_file, cache_dir=str(tmp_path / "cache"))
 
         assert [path.suffix for path in (tmp_path / "cache").iterdir()] == [".lock"]
+
+    def test_build_syncs_through_a_writable_handle(
+        self, data_file, tmp_path, monkeypatch
+    ):
+        """The build syncs its file to disk before it replaces the cache.
+        Windows syncs a file only through a handle open for writing. POSIX
+        syncs through any handle, so there the Windows rule is applied."""
+        fsync = os.fsync
+        synced = []
+
+        def recorded_fsync(fd):
+            if fcntl is not None:
+                if fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY:
+                    raise OSError(errno.EBADF, os.strerror(errno.EBADF))
+            fsync(fd)
+            synced.append(fd)
+
+        monkeypatch.setattr(os, "fsync", recorded_fsync)
+
+        TailwindPlus(data_file, cache_dir=str(tmp_path / "cache")).close()
+
+        assert synced
 
     def test_cache_file_is_created(self, data_file, tmp_path):
         """Test that a cache DB file is created on first instantiation."""

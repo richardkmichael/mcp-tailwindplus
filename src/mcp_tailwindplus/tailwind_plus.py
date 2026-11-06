@@ -543,8 +543,9 @@ class TailwindPlus:
             self._build_db.close()
             # Without the journal or syncing, the file's pages may reach the
             # disk after the rename does; a crash in between would leave a cache
-            # with its metadata but not all its pages.
-            with open(build_path, "rb") as build_file:
+            # with its metadata but not all its pages. Windows syncs a file
+            # only through a handle open for writing.
+            with open(build_path, "r+b") as build_file:
                 os.fsync(build_file.fileno())
             os.replace(build_path, cache_path)
         except BaseException:
